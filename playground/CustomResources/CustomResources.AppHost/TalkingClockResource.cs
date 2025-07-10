@@ -50,8 +50,9 @@ public static class TalkingClockExtensions
                 ]
             });
 
-        clockBuilder.OnInitializeResource(static async (resource, @event, token) =>
+        clockBuilder.OnInitializeResource(static async (resourceBuilder, @event, token) =>
         {
+            var resource = resourceBuilder.Resource;
             // This event is published when the resource is initialized.
             // You add custom logic here to establish the lifecycle for your custom resource.
 

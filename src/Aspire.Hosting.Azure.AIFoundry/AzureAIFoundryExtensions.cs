@@ -165,9 +165,10 @@ public static class AzureAIFoundryExtensions
 
     private static IResourceBuilder<AzureAIFoundryResource> WithInitializer(this IResourceBuilder<AzureAIFoundryResource> builder)
     {
-        return builder.OnInitializeResource((resource, @event, ct)
+        return builder.OnInitializeResource((builder, @event, ct)
             => Task.Run(async () =>
             {
+                var resource = builder.Resource;
                 var rns = @event.Services.GetRequiredService<ResourceNotificationService>();
                 var manager = @event.Services.GetRequiredService<FoundryLocalManager>();
                 var logger = @event.Services.GetRequiredService<ResourceLoggerService>().GetLogger(resource);

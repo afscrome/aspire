@@ -407,8 +407,9 @@ public class WithUrlsTests
                 State = KnownResourceStates.NotStarted,
                 Properties = []
             })
-            .OnInitializeResource(async (custom, e, ct) =>
+            .OnInitializeResource(async (resourceBuilder, e, ct) =>
             {
+                var custom = resourceBuilder.Resource;
                 // Mark all the endpoints on custom resource as allocated so that the URLs are initialized
                 if (custom.TryGetEndpoints(out var endpoints))
                 {

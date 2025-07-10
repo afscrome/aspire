@@ -40,9 +40,9 @@ public static class EventingExtensions
     /// <param name="builder">The resource builder.</param>
     /// <param name="callback">A callback to handle the event.</param>
     /// <returns>The <see cref="IResourceBuilder{T}"/>.</returns>
-    public static IResourceBuilder<T> OnInitializeResource<T>(this IResourceBuilder<T> builder, Func<T, InitializeResourceEvent, CancellationToken, Task> callback)
+    public static IResourceBuilder<T> OnInitializeResource<T>(this IResourceBuilder<T> builder, Func<IResourceBuilder<T>, InitializeResourceEvent, CancellationToken, Task> callback)
         where T : IResource
-        => builder.OnEventWithResourceArgument(callback);
+        => builder.OnEventWithBuilderArgument(callback);
 
     /// <summary>
     /// Subscribes a callback to the <see cref="ResourceEndpointsAllocatedEvent"/> event within the AppHost.
