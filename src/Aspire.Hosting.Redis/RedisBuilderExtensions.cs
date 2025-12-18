@@ -243,45 +243,51 @@ public static class RedisBuilderExtensions
                                       .WithImage(RedisContainerImageTags.RedisCommanderImage, RedisContainerImageTags.RedisCommanderTag)
                                       .WithImageRegistry(RedisContainerImageTags.RedisCommanderRegistry)
                                       .WithHttpEndpoint(targetPort: 8081, name: "http")
+                                      .WithIconName("WindowDatabase")
+                                      .WithHttpHealthCheck(() => resource.GetEndpoint("http"), "/")
                                       .ExcludeFromManifest();
 
-            builder.ApplicationBuilder.Eventing.Subscribe<BeforeResourceStartedEvent>(resource, async (e, ct) =>
-            {
-                var redisInstances = builder.ApplicationBuilder.Resources.OfType<RedisResource>();
-
-                if (!redisInstances.Any())
+            resourceBuilder
+                .OnBeforeResourceStarted(async (commander, e, ct) =>
                 {
-                    // No-op if there are no Redis resources present.
-                    return;
-                }
+                    var redisInstances = builder.ApplicationBuilder.Resources.OfType<RedisResource>();
 
-                var hostsVariableBuilder = new StringBuilder();
-
-                foreach (var redisInstance in redisInstances)
-                {
-                    // Can't configure redis commander image for HTTPS via environment variables
-                    var endpoint = redisInstance.PrimaryEndpoint;
-                    if (redisInstance.TryGetEndpoints(out var endpoints))
+                    if (!redisInstances.Any())
                     {
-                        var secondaryEndpoint = endpoints.FirstOrDefault(ep => StringComparer.OrdinalIgnoreCase.Equals(ep.Name, RedisResource.SecondaryEndpointName));
-                        if (secondaryEndpoint is not null)
+                        // No-op if there are no Redis resources present.
+                        return;
+                    }
+
+                    var hostsVariableBuilder = new StringBuilder();
+
+                    foreach (var redisInstance in redisInstances)
+                    {
+                        // Can't configure redis commander image for HTTPS via environment variables
+                        var endpoint = redisInstance.PrimaryEndpoint;
+                        if (redisInstance.TryGetEndpoints(out var endpoints))
                         {
-                            endpoint = new EndpointReference(redisInstance, secondaryEndpoint);
+                            var secondaryEndpoint = endpoints.FirstOrDefault(ep => StringComparer.OrdinalIgnoreCase.Equals(ep.Name, RedisResource.SecondaryEndpointName));
+                            if (secondaryEndpoint is not null)
+                            {
+                                endpoint = new EndpointReference(redisInstance, secondaryEndpoint);
+                            }
                         }
+                        // Redis Commander assumes Redis is being accessed over a default Aspire container network and hardcodes the resource address
+                        // This will need to be refactored once updated service discovery APIs are available
+                        var hostString = $"{(hostsVariableBuilder.Length > 0 ? "," : string.Empty)}{redisInstance.Name}:{redisInstance.Name}:{endpoint.TargetPort}:0";
+                        if (redisInstance.PasswordParameter is not null)
+                        {
+                            var password = await redisInstance.PasswordParameter.GetValueAsync(ct).ConfigureAwait(false);
+                            hostString += $":{password}";
+                        }
+                        hostsVariableBuilder.Append(hostString);
                     }
-                    // Redis Commander assumes Redis is being accessed over a default Aspire container network and hardcodes the resource address
-                    // This will need to be refactored once updated service discovery APIs are available
-                    var hostString = $"{(hostsVariableBuilder.Length > 0 ? "," : string.Empty)}{redisInstance.Name}:{redisInstance.Name}:{endpoint.TargetPort}:0";
-                    if (redisInstance.PasswordParameter is not null)
-                    {
-                        var password = await redisInstance.PasswordParameter.GetValueAsync(ct).ConfigureAwait(false);
-                        hostString += $":{password}";
-                    }
-                    hostsVariableBuilder.Append(hostString);
-                }
 
-                resourceBuilder.WithEnvironment("REDIS_HOSTS", hostsVariableBuilder.ToString());
-            });
+                    resourceBuilder.WithEnvironment("REDIS_HOSTS", hostsVariableBuilder.ToString());
+                })
+                .WithManagementUrls("Manage (Commander)",
+                    async x => await x.GetEndpoint("http").GetValueAsync().ConfigureAwait(false) ?? throw new InvalidOperationException("Endpoint URI is null."),
+                    resourceBuilder.ApplicationBuilder.Resources.OfType<RedisResource>());
 
             configureContainer?.Invoke(resourceBuilder);
 
@@ -320,6 +326,7 @@ public static class RedisBuilderExtensions
                 .WithImage(RedisContainerImageTags.RedisInsightImage, RedisContainerImageTags.RedisInsightTag)
                 .WithImageRegistry(RedisContainerImageTags.RedisInsightRegistry)
                 .WithHttpEndpoint(targetPort: 5540, name: "http")
+                .WithIconName("WindowDatabase")
                 .WithEnvironment(context =>
                 {
                     var redisInstances = builder.ApplicationBuilder.Resources.OfType<RedisResource>();
@@ -383,36 +390,85 @@ public static class RedisBuilderExtensions
                 })
                 .ExcludeFromManifest();
 
-            builder.ApplicationBuilder.Eventing.Subscribe<BeforeStartEvent>((@event, cancellationToken) =>
-            {
-                var developerCertificateService = @event.Services.GetRequiredService<IDeveloperCertificateService>();
-
-                bool addHttps = false;
-                if (!resource.TryGetLastAnnotation<HttpsCertificateAnnotation>(out var annotation))
+            resourceBuilder
+                .OnBeforeResourceStarted((r, @event, cancellationToken) =>
                 {
-                    if (developerCertificateService.UseForHttps)
+                    var developerCertificateService = @event.Services.GetRequiredService<IDeveloperCertificateService>();
+
+                    bool addHttps = false;
+                    if (!resource.TryGetLastAnnotation<HttpsCertificateAnnotation>(out var annotation))
+                    {
+                        if (developerCertificateService.UseForHttps)
+                        {
+                            addHttps = true;
+                        }
+                    }
+                    else if (annotation.UseDeveloperCertificate.GetValueOrDefault(developerCertificateService.UseForHttps) || annotation.Certificate is not null)
                     {
                         addHttps = true;
                     }
-                }
-                else if (annotation.UseDeveloperCertificate.GetValueOrDefault(developerCertificateService.UseForHttps) || annotation.Certificate is not null)
-                {
-                    addHttps = true;
-                }
 
-                if (addHttps)
-                {
-                    // If a TLS certificate is configured, ensure the endpoint uses https scheme
-                    resourceBuilder.WithEndpoint("http", ep => ep.UriScheme = "https");
-                }
+                    if (addHttps)
+                    {
+                        // If a TLS certificate is configured, ensure the endpoint uses https scheme
+                        resourceBuilder.WithEndpoint("http", ep => ep.UriScheme = "https");
+                    }
 
-                return Task.CompletedTask;
-            });
+                    return Task.CompletedTask;
+                })
+                .WithManagementUrls("Manage (Insights)",
+                    async x => await x.GetEndpoint("http").GetValueAsync().ConfigureAwait(false) ?? throw new InvalidOperationException("Endpoint URI is null."),
+                    resourceBuilder.ApplicationBuilder.Resources.OfType<RedisResource>());
 
             configureContainer?.Invoke(resourceBuilder);
 
             return builder;
         }
+    }
+
+    private static IResourceBuilder<T> WithManagementUrls<T>(this IResourceBuilder<T> builder, string displayName, Func<T, ValueTask<string>> urlFactory, params IEnumerable<IResource> applyTo)
+        where T : IResource
+    {
+        string? url = null;
+
+        return builder
+            .OnResourceReady(async (r, eventing, ct) =>
+            {
+                var notificationService = eventing.Services.GetRequiredService<ResourceNotificationService>();
+                url = await urlFactory(builder.Resource).ConfigureAwait(false);
+
+                foreach (var resource in applyTo)
+                {
+                    var urlSnapshot = new UrlSnapshot(Name: r.Name, Url: url, IsInternal: false)
+                    {
+                        DisplayProperties = new(displayName, 0)
+                    };
+                    await notificationService.PublishUpdateAsync(resource, s => s with
+                    {
+                        Urls = [
+                            ..s.Urls,
+                            urlSnapshot
+                        ]}).ConfigureAwait(false);
+                }
+            })
+            .OnResourceStopped(async (_, eventing, ct) =>
+            {
+                if (url == null)
+                {
+                    return;
+                }
+
+                var notificationService = eventing.Services.GetRequiredService<ResourceNotificationService>();
+
+                foreach (var resource in applyTo)
+                {
+                    await notificationService.PublishUpdateAsync(resource, s =>
+                        s with
+                        {
+                            Urls = [.. s.Urls.Where(x => !(x.Url == url && x.DisplayProperties.DisplayName == displayName))]
+                        }).ConfigureAwait(false);
+                }
+            });
     }
 
     /// <summary>

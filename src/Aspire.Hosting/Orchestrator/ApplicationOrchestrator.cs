@@ -140,7 +140,7 @@ internal sealed class ApplicationOrchestrator
 
         // Publish update with URLs.
         var urls = GetResourceUrls(resource);
-        await _notificationService.PublishUpdateAsync(resource, s => s with { Urls = [.. urls] }).ConfigureAwait(false);
+        await _notificationService.PublishUpdateAsync(resource, s => s with { Urls = [.. s.Urls, .. urls] }).ConfigureAwait(false);
     }
 
     private static IEnumerable<UrlSnapshot> GetResourceUrls(IResource resource)
