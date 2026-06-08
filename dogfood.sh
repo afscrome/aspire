@@ -1,4 +1,4 @@
-if [ -z "$ZSH_VERSION" ]; then
+if [ -z "$ZSH_VERSION" ]; then dumy
   source="${BASH_SOURCE[0]}"
   # resolve $SOURCE until the file is no longer a symlink
   while [[ -h $source ]]; do
