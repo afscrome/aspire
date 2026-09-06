@@ -56,6 +56,8 @@ public static class Extensions
                 builder.Resource.Annotations.Remove(executableAnnotation);
             }
 
+            builder.Resource.RemoveExecutableLaunchRecipeAnnotations();
+
             builder.ApplicationBuilder.RemoveRebuilderResource(builder.Resource.Name);
 
             builder.WithAnnotation(image, ResourceAnnotationMutationBehavior.Replace);
@@ -119,6 +121,24 @@ public static class Extensions
     private static string GetSanitizedProjectName(string projectPath) =>
         Path.GetFileNameWithoutExtension(projectPath).Replace('.', '-').ToLowerInvariant();
 
+    // ExecutableLaunchRecipeAnnotation is internal to Aspire.Hosting, so it can't be referenced by name from this
+    // project. Aspire.Hosting.Dcp.ExecutableCreator requires that a resource carry at most one such annotation
+    // (exactly one for resources it launches, none for containers) - a substitution helper below that copies a
+    // donor resource's annotations onto a target which already has its own (e.g. RunAsTool applied to a
+    // ProjectResource, whose constructor already added one) must remove the stale one first so that invariant
+    // holds by construction, rather than relying on the framework to tolerate duplicates.
+    private static void RemoveExecutableLaunchRecipeAnnotations(this IResource resource)
+    {
+        var stale = resource.Annotations
+            .Where(a => a.GetType().Name == "ExecutableLaunchRecipeAnnotation")
+            .ToList();
+
+        foreach (var annotation in stale)
+        {
+            resource.Annotations.Remove(annotation);
+        }
+    }
+
     // AddProject/AddCSharpApp/AddDotnetProject all add a hidden "{name}-rebuilder" companion resource (via
     // WithProjectDefaults) as a side effect. Once RunAsContainer/RunAsProject/RunAsTool convert a resource away
     // from being a project, that companion is left behind referencing a resource that's no longer a project —
@@ -158,6 +178,8 @@ public static class Extensions
             {
                 builder.Resource.Annotations.Remove(dotnetToolAnnotation);
             }
+
+            builder.Resource.RemoveExecutableLaunchRecipeAnnotations();
 
             // For now, create a dummy csharp app resource, then copy it's annotations to our new resource
             //
@@ -224,6 +246,8 @@ public static class Extensions
             {
                 builder.Resource.Annotations.Remove(containerImageAnnotation);
             }
+
+            builder.Resource.RemoveExecutableLaunchRecipeAnnotations();
 
             builder.ApplicationBuilder.RemoveRebuilderResource(builder.Resource.Name);
 

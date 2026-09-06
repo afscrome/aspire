@@ -211,22 +211,20 @@ public class ExecutableLaunchPlanTests
     }
 
     [Fact]
-    public async Task ResolverUsesLastLaunchRecipeWhenMultiplePresent()
+    public async Task ResolverRejectsMultipleLaunchRecipes()
     {
-        // A resource can end up with more than one ExecutableLaunchRecipeAnnotation when a substitution helper
-        // (e.g. the ResourceSubstitution playground's RunAsTool) layers a donor resource's annotations onto an
-        // existing project/executable resource rather than replacing it outright. The resolver follows the same
-        // "last annotation wins" convention used for every other annotation on the resource instead of treating
-        // this as invalid.
         var resource = new ExecutableResource("app", "tool", "/tmp");
-        resource.Annotations.Add(new ExecutableLaunchRecipeAnnotation(new StubExecutableLaunchRecipe("second-command")));
+        resource.Annotations.Add(new ExecutableLaunchRecipeAnnotation(DirectExecutableLaunchRecipe.Instance));
 
-        var plan = await ResolveLaunchPlanAsync(
-            resource,
-            CreateExecutionConfiguration([]),
-            []);
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => ResolveLaunchPlanAsync(
+                resource,
+                CreateExecutionConfiguration([]),
+                []));
 
-        Assert.Equal("second-command", plan.Command);
+        Assert.Equal(
+            "Resource 'app' must have exactly one executable launch recipe, but 2 were found.",
+            exception.Message);
     }
 
     private static Task<ExecutableLaunchPlan> ResolveLaunchPlanAsync(
@@ -272,21 +270,4 @@ public class ExecutableLaunchPlanTests
 
         public LaunchSettings LaunchSettings { get; } = new();
     }
-}
-
-/// <summary>
-/// A minimal <see cref="IExecutableLaunchRecipe"/> for distinguishing which recipe was actually used to
-/// resolve a launch plan, e.g. when a resource carries more than one <see cref="ExecutableLaunchRecipeAnnotation"/>.
-/// </summary>
-internal sealed class StubExecutableLaunchRecipe(string command) : IExecutableLaunchRecipe
-{
-    public Task<ExecutableLaunchPlan> CreateLaunchPlanAsync(ExecutableLaunchContext context) =>
-        Task.FromResult(new ExecutableLaunchPlan(
-            command,
-            "/tmp",
-            context.Decision.Mechanism,
-            arguments: null,
-            environmentVariables: [],
-            launchConfigurations: [],
-            displayArguments: []));
 }
