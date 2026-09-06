@@ -1353,10 +1353,12 @@ public class DistributedApplicationTests
         var aspireDashboard = model.Resources.Single(r => r.Name == KnownResourceNames.AspireDashboard);
 
         var dashboardUrls = aspireDashboard.Annotations.OfType<ResourceUrlAnnotation>().ToList();
+#pragma warning disable CS0618 // DisplayOrder is obsolete but must still be checked for compatibility.
         Assert.Collection(dashboardUrls,
-            u => Assert.Equal("Dashboard (https)", u.DisplayText),
-            u => Assert.Equal("Dashboard (http)", u.DisplayText),
-            u => Assert.Equal("otlp-grpc", u.DisplayText));
+            u => { Assert.Null(u.DisplayText); Assert.Equal(1, u.DisplayOrder); },
+            u => { Assert.Null(u.DisplayText); Assert.Equal(1, u.DisplayOrder); },
+            u => { Assert.Null(u.DisplayText); Assert.Null(u.DisplayOrder); });
+#pragma warning restore CS0618
 
         await app.StopAsync().DefaultTimeout(TestConstants.DefaultOrchestratorTestLongTimeout);
     }

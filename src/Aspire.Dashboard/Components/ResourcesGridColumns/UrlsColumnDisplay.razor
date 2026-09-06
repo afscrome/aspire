@@ -55,7 +55,7 @@ else if (DisplayedUrls.Count > 1)
                                 @foreach (var item in items)
                                 {
                                     <div class="url-link">
-                                        @WriteUrl(item)
+                                        @WriteExpandedUrl(item)
                                     </div>
                                 }
                             </div>
@@ -82,6 +82,24 @@ else if (DisplayedUrls.Count > 1)
         else
         {
             return @<span title="@GetTooltipText(displayedUrl)">@displayedUrl.Text</span>;
+        }
+    }
+
+    // In the overflow popover there's no space constraint, so show the endpoint name and the full URL
+    // rather than the (possibly truncated-looking) default display text. The name/colon prefix is kept
+    // outside the link so only the URL text itself is clickable.
+    RenderFragment WriteExpandedUrl(DisplayedUrl displayedUrl)
+    {
+        var namePrefix = displayedUrl.Name != "-" ? $"{displayedUrl.Name}: " : null;
+        var urlText = GetTooltipText(displayedUrl);
+
+        if (displayedUrl.Url != null)
+        {
+            return @<text>@namePrefix<a href="@displayedUrl.Url" target="_blank" @onclick:stopPropagation="true" @onkeydown:stopPropagation="true">@urlText</a></text>;
+        }
+        else
+        {
+            return @<text>@namePrefix<span>@urlText</span></text>;
         }
     }
 }

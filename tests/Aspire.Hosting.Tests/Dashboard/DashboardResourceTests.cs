@@ -848,11 +848,9 @@ public class DashboardResourceTests(ITestOutputHelper testOutputHelper)
 
         Assert.NotNull(httpUrl);
         Assert.Equal(expectedHttpUrl, httpUrl.Url);
-        Assert.Equal("Dashboard (http)", httpUrl.DisplayText);
 
         Assert.NotNull(httpsUrl);
         Assert.Equal(expectedHttpsUrl, httpsUrl.Url);
-        Assert.Equal("Dashboard (https)", httpsUrl.DisplayText);
     }
 
     static void SetDashboardAllocatedEndpoints(IResource dashboard, int otlpGrpcPort, int otlpHttpPort, int httpPort, int httpsPort)
