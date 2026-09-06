@@ -99,7 +99,6 @@ public class RedisFunctionalTests(ITestOutputHelper testOutputHelper)
     [RequiresFeature(TestFeature.ContainerRuntime)]
     public async Task VerifyRedisCommanderManagementLinkCoversEveryRedisResourceItManages()
     {
-        var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
         using var builder = TestDistributedApplicationBuilder.CreateWithTestContainerRegistry(testOutputHelper);
 
         IResourceBuilder<RedisCommanderResource>? commanderBuilder = null;
@@ -109,7 +108,14 @@ public class RedisFunctionalTests(ITestOutputHelper testOutputHelper)
 
         using var app = builder.Build();
 
-        await app.StartAsync(cts.Token);
+        // Startup gets its own timeout budget, separate from the verification waits below, so slow container
+        // startup under CI contention can't eat into the time available for those waits.
+        using (var startCts = new CancellationTokenSource(TimeSpan.FromMinutes(3)))
+        {
+            await app.StartAsync(startCts.Token);
+        }
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
 
         var commanderEvent = await app.ResourceNotifications.WaitForResourceAsync(
             commanderBuilder.Resource.Name,
@@ -136,7 +142,6 @@ public class RedisFunctionalTests(ITestOutputHelper testOutputHelper)
     [RequiresFeature(TestFeature.ContainerRuntime)]
     public async Task VerifyRedisCommanderManagementLinkTracksCommanderLifecycleAndCommanderIsHidden()
     {
-        var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
         using var builder = TestDistributedApplicationBuilder.CreateWithTestContainerRegistry(testOutputHelper);
 
         IResourceBuilder<RedisCommanderResource>? commanderBuilder = null;
@@ -149,7 +154,14 @@ public class RedisFunctionalTests(ITestOutputHelper testOutputHelper)
 
         using var app = builder.Build();
 
-        await app.StartAsync(cts.Token);
+        // Startup gets its own timeout budget, separate from the verification waits below, so slow container
+        // startup under CI contention can't eat into the time available for those waits.
+        using (var startCts = new CancellationTokenSource(TimeSpan.FromMinutes(3)))
+        {
+            await app.StartAsync(startCts.Token);
+        }
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
 
         var redisEvent = await app.ResourceNotifications.WaitForResourceAsync(
             redis.Resource.Name,
