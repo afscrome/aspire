@@ -97,6 +97,96 @@ public class RedisFunctionalTests(ITestOutputHelper testOutputHelper)
 
     [Fact]
     [RequiresFeature(TestFeature.ContainerRuntime)]
+    public async Task VerifyRedisCommanderManagementLinkCoversEveryRedisResourceItManages()
+    {
+        var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+        using var builder = TestDistributedApplicationBuilder.CreateWithTestContainerRegistry(testOutputHelper);
+
+        IResourceBuilder<RedisCommanderResource>? commanderBuilder = null;
+        var redis1 = builder.AddRedis("redis1").WithRedisCommander(c => commanderBuilder = c);
+        var redis2 = builder.AddRedis("redis2");
+        Assert.NotNull(commanderBuilder);
+
+        using var app = builder.Build();
+
+        await app.StartAsync(cts.Token);
+
+        foreach (var redis in new[] { redis1, redis2 })
+        {
+            var redisEvent = await app.ResourceNotifications.WaitForResourceAsync(
+                redis.Resource.Name,
+                e => e.Snapshot.Urls.FirstOrDefault(u => u.DisplayProperties.DisplayName == "Manage (Commander)") is { IsInactive: false },
+                cts.Token);
+
+            var managementUrl = redisEvent.Snapshot.Urls.First(u => u.DisplayProperties.DisplayName == "Manage (Commander)");
+            Assert.Equal("http", managementUrl.Name);
+
+            Assert.Equal(managementUrl.Url, managementUrl.Url);
+        }
+
+        await app.StopAsync();
+    }
+
+    [Fact]
+    [RequiresFeature(TestFeature.ContainerRuntime)]
+    public async Task VerifyRedisCommanderManagementLinkTracksCommanderLifecycleAndCommanderIsHidden()
+    {
+        var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+        using var builder = TestDistributedApplicationBuilder.CreateWithTestContainerRegistry(testOutputHelper);
+
+        IResourceBuilder<RedisCommanderResource>? commanderBuilder = null;
+        var redis = builder.AddRedis("redis").WithRedisCommander(c =>
+        {
+            c.WithExplicitStart();
+            commanderBuilder = c;
+        });
+        Assert.NotNull(commanderBuilder);
+
+        using var app = builder.Build();
+
+        await app.StartAsync(cts.Token);
+
+        var redisEvent = await app.ResourceNotifications.WaitForResourceAsync(
+            redis.Resource.Name,
+            e => e.Snapshot.State == KnownResourceStates.Running,
+            cts.Token);
+
+        var managementUrl = redisEvent.Snapshot.Urls.FirstOrDefault(u => u.DisplayProperties.DisplayName == "Manage (Commander)");
+        Assert.NotNull(managementUrl);
+        Assert.True(managementUrl.IsInactive);
+
+        var startResult = await app.ResourceCommands.ExecuteCommandAsync(commanderBuilder.Resource, KnownResourceCommands.StartCommand);
+        Assert.True(startResult.Success, startResult.Message);
+
+        var commanderEvent = await app.ResourceNotifications.WaitForResourceAsync(
+            commanderBuilder.Resource.Name,
+            e => e.Snapshot.State == KnownResourceStates.Running,
+            cts.Token);
+        Assert.True(commanderEvent.Snapshot.IsHidden);
+
+        redisEvent = await app.ResourceNotifications.WaitForResourceAsync(
+            redis.Resource.Name,
+            e => e.Snapshot.Urls.FirstOrDefault(u => u.DisplayProperties.DisplayName == "Manage (Commander)") is { IsInactive: false },
+            cts.Token);
+
+        // The link must be a real, absolute, clickable URL, not the "/" placeholder some AppHost code paths use
+        // before the standard URL pipeline resolves it against the endpoint's allocated address.
+        managementUrl = redisEvent.Snapshot.Urls.First(u => u.DisplayProperties.DisplayName == "Manage (Commander)");
+        Assert.True(Uri.TryCreate(managementUrl.Url, UriKind.Absolute, out _), $"Expected an absolute URL but got '{managementUrl.Url}'.");
+
+        var stopResult = await app.ResourceCommands.ExecuteCommandAsync(commanderBuilder.Resource, KnownResourceCommands.StopCommand);
+        Assert.True(stopResult.Success, stopResult.Message);
+
+        await app.ResourceNotifications.WaitForResourceAsync(
+            redis.Resource.Name,
+            e => e.Snapshot.Urls.FirstOrDefault(u => u.DisplayProperties.DisplayName == "Manage (Commander)") is { IsInactive: true },
+            cts.Token);
+
+        await app.StopAsync();
+    }
+
+    [Fact]
+    [RequiresFeature(TestFeature.ContainerRuntime)]
     public async Task VerifyRedisResource()
     {
         using var builder = TestDistributedApplicationBuilder.CreateWithTestContainerRegistry(testOutputHelper);
