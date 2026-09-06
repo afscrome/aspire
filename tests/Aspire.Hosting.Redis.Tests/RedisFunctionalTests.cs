@@ -111,6 +111,12 @@ public class RedisFunctionalTests(ITestOutputHelper testOutputHelper)
 
         await app.StartAsync(cts.Token);
 
+        var commanderEvent = await app.ResourceNotifications.WaitForResourceAsync(
+            commanderBuilder.Resource.Name,
+            e => e.Snapshot.State == KnownResourceStates.Running,
+            cts.Token);
+        var commanderEndpointUri = new Uri(commanderEvent.Snapshot.Urls.First(u => u.Name == "http").Url);
+
         foreach (var redis in new[] { redis1, redis2 })
         {
             var redisEvent = await app.ResourceNotifications.WaitForResourceAsync(
@@ -120,8 +126,7 @@ public class RedisFunctionalTests(ITestOutputHelper testOutputHelper)
 
             var managementUrl = redisEvent.Snapshot.Urls.First(u => u.DisplayProperties.DisplayName == "Manage (Commander)");
             Assert.Equal("http", managementUrl.Name);
-
-            Assert.Equal(managementUrl.Url, managementUrl.Url);
+            Assert.Equal(commanderEndpointUri, new Uri(managementUrl.Url));
         }
 
         await app.StopAsync();

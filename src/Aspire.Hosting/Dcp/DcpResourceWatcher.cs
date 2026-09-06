@@ -875,8 +875,14 @@ internal sealed class DcpResourceWatcher : IConsoleLogsService, IAsyncDisposable
 
     private async Task RefreshResourcesReferencingEndpoint(Endpoint endpoint)
     {
-        if (endpoint.Spec.ServiceName is not { } serviceName ||
-            !_resourceState.ServicesMap.TryGetValue(serviceName, out var service) ||
+        // Resolved from AppResources rather than ServicesMap: AppResources is built synchronously from the app
+        // model before the resource watcher starts, so it can't race against the separate Service watch loop
+        // that populates ServicesMap.
+        var service = endpoint.Spec.ServiceName is { } serviceName
+            ? _resourceState.AppResources.OfType<ServiceWithModelResource>().Select(s => s.Service).FirstOrDefault(s => s.Metadata.Name == serviceName)
+            : null;
+
+        if (service is null ||
             service.AppModelResourceName is not { } endpointOwnerResourceName ||
             service.EndpointName is not { } endpointName)
         {
