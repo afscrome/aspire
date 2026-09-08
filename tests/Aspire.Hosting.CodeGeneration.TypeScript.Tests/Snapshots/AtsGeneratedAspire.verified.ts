@@ -475,7 +475,7 @@ export interface TestHandlePropertyContext {
     /** Gets the OptionalResource property */
     optionalResource: {
         get: () => Promise<TestResourceContext | null>;
-        set: (value: Awaitable<TestResourceContext>) => Promise<void>;
+        set: (value: Awaitable<TestResourceContext | null>) => Promise<void>;
     };
     /** Gets the ReadOnlyOptionalResource property */
     readOnlyOptionalResource(): Promise<TestResourceContext | null>;
@@ -489,7 +489,7 @@ export interface TestHandlePropertyContext {
     /** Gets the OptionalContext property */
     optionalContext: {
         get: () => Promise<TestEnvironmentContext | null>;
-        set: (value: Awaitable<TestEnvironmentContext>) => Promise<void>;
+        set: (value: Awaitable<TestEnvironmentContext | null>) => Promise<void>;
     };
     /** Gets the ReadOnlyOptionalContext property */
     readOnlyOptionalContext(): Promise<TestEnvironmentContext | null>;
@@ -532,7 +532,7 @@ class TestHandlePropertyContextImpl implements TestHandlePropertyContext {
             );
             return handle === null ? null : new TestResourceContextImpl(handle, this._client);
         },
-        set: async (value: Awaitable<TestResourceContext>): Promise<void> => {
+        set: async (value: Awaitable<TestResourceContext | null>): Promise<void> => {
             value = isPromiseLike(value) ? await value : value;
             await this._client.invokeCapability<void>(
                 'Aspire.Hosting.CodeGeneration.TypeScript.Tests.TestTypes/TestHandlePropertyContext.setOptionalResource',
@@ -588,7 +588,7 @@ class TestHandlePropertyContextImpl implements TestHandlePropertyContext {
             );
             return handle === null ? null : new TestEnvironmentContextImpl(handle, this._client);
         },
-        set: async (value: Awaitable<TestEnvironmentContext>): Promise<void> => {
+        set: async (value: Awaitable<TestEnvironmentContext | null>): Promise<void> => {
             value = isPromiseLike(value) ? await value : value;
             await this._client.invokeCapability<void>(
                 'Aspire.Hosting.CodeGeneration.TypeScript.Tests.TestTypes/TestHandlePropertyContext.setOptionalContext',

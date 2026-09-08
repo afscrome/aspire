@@ -1861,22 +1861,23 @@ internal sealed partial class TypeScriptApiProjector
         {
             if (TryMapInterfaceInputTypeToTypeScript(typeRef!) is { } interfaceInputType)
             {
-                return $"Awaitable<{interfaceInputType}>";
+                return $"Awaitable<{ApplyHandleNullability(typeRef, interfaceInputType)}>";
             }
 
             var handleName = GetHandleReferenceInterfaceName();
-            return $"Awaitable<{handleName}>";
+            return $"Awaitable<{ApplyHandleNullability(typeRef, handleName)}>";
         }
 
         if (IsHandleType(typeRef) && _wrapperClassNames.TryGetValue(typeRef!.TypeId, out var className))
         {
             var ifaceName = GetInterfaceName(className);
-            return $"Awaitable<{ifaceName}>";
+            // Keep null inside Awaitable so both null and a promise resolving to null are accepted.
+            return $"Awaitable<{ApplyHandleNullability(typeRef, ifaceName)}>";
         }
 
         if (typeRef?.TypeId == InteractionInputCollectionTypeId)
         {
-            return $"Awaitable<{GetInteractionInputCollectionClassName()}>";
+            return $"Awaitable<{ApplyHandleNullability(typeRef, GetInteractionInputCollectionClassName())}>";
         }
 
         if (IsCancellationTokenType(typeRef))
@@ -1884,7 +1885,7 @@ internal sealed partial class TypeScriptApiProjector
             return $"AbortSignal | {GetCancellationTokenInterfaceName()}";
         }
 
-        return MapTypeRefToTypeScript(typeRef);
+        return MapTypeRefToTypeScriptPreservingHandleNullability(typeRef);
     }
 
     internal string MapInputUnionTypeToTypeScript(AtsTypeRef typeRef)
@@ -1907,6 +1908,7 @@ internal sealed partial class TypeScriptApiProjector
                 var baseName = IsInterfaceHandleType(memberRef) && TryMapInterfaceInputTypeToTypeScript(memberRef) is { } expanded
                     ? expanded
                     : MapTypeRefToTypeScript(memberRef);
+                baseName = ApplyHandleNullability(memberRef, baseName);
                 nonHandleTypes.Add(baseName);
                 handleTypeNames.Add(baseName);
             }
@@ -2494,7 +2496,11 @@ internal sealed partial class TypeScriptApiProjector
 
     internal string MapTypeRefToTypeScriptPreservingHandleNullability(AtsTypeRef? typeRef)
     {
-        var mappedType = MapTypeRefToTypeScript(typeRef);
+        return ApplyHandleNullability(typeRef, MapTypeRefToTypeScript(typeRef));
+    }
+
+    private static string ApplyHandleNullability(AtsTypeRef? typeRef, string mappedType)
+    {
         return typeRef is { Category: AtsTypeCategory.Handle, IsNullable: true }
             ? $"{mappedType} | null"
             : mappedType;
