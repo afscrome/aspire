@@ -45,6 +45,23 @@ public class DockerComposeTests(ITestOutputHelper outputHelper)
     }
 
     [Fact]
+    public async Task ProjectContainerProjectionUsesConfiguredImage()
+    {
+        using var builder = TestDistributedApplicationBuilder.Create(DistributedApplicationOperation.Publish);
+        var composeEnvironment = builder.AddDockerComposeEnvironment("docker-compose");
+        var project = builder.AddProject<Projects.ServiceA>("api");
+        project.WithContainerProjection(
+            DistributedApplicationOperation.Publish,
+            () => new TestContainerProjection(project.Resource),
+            container => container.WithImage("contoso/api", "1.0"));
+
+        var serviceResource = new DockerComposeServiceResource(project.Resource.Name, project.Resource, composeEnvironment.Resource);
+        var service = await serviceResource.BuildComposeServiceAsync();
+
+        Assert.Equal("contoso/api:1.0", service.Image);
+    }
+
+    [Fact]
     public void PublishingDockerComposeEnviromentPublishesFile()
     {
         using var workspace = TemporaryWorkspace.Create(outputHelper);

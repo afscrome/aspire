@@ -133,9 +133,11 @@ public class DockerComposeServiceResource : Resource, IResourceWithParent<Docker
 
     private bool TryGetContainerImageName(IResource resourceInstance, out string? containerImageName)
     {
-        // If the resource has a Dockerfile build annotation, we don't have the image name
-        // it will come as a parameter
-        if (resourceInstance.TryGetLastAnnotation<DockerfileBuildAnnotation>(out _) || resourceInstance is ProjectResource)
+        // Projects normally require an SDK image build, but a selected projection can instead supply a
+        // prebuilt image. Dockerfile annotations remain authoritative because their image is produced later.
+        var requiresImageBuild = resourceInstance.TryGetLastAnnotation<DockerfileBuildAnnotation>(out _) ||
+            resourceInstance is ProjectResource && resourceInstance.AsContainer() is null;
+        if (requiresImageBuild)
         {
             containerImageName = this.AsContainerImagePlaceholder();
             return true;
