@@ -7217,16 +7217,16 @@ class TestHandlePropertyContext:
         return self._handle
 
     @_uncached_property
-    def optional_resource(self) -> TestResourceContext:
+    def optional_resource(self) -> TestResourceContext | None:
         """Gets the OptionalResource property"""
         result = self._client.invoke_capability(
             'Aspire.Hosting.CodeGeneration.TypeScript.Tests.TestTypes/TestHandlePropertyContext.optionalResource',
             {'context': self._handle}
         )
-        return typing.cast(TestResourceContext, result)
+        return typing.cast(TestResourceContext | None, result)
 
     @optional_resource.setter
-    def optional_resource(self, value: TestResourceContext) -> None:
+    def optional_resource(self, value: TestResourceContext | None) -> None:
         """Sets the OptionalResource property"""
         self._client.invoke_capability(
             'Aspire.Hosting.CodeGeneration.TypeScript.Tests.TestTypes/TestHandlePropertyContext.setOptionalResource',
@@ -7234,13 +7234,13 @@ class TestHandlePropertyContext:
         )
 
     @_cached_property
-    def read_only_optional_resource(self) -> TestResourceContext:
+    def read_only_optional_resource(self) -> TestResourceContext | None:
         """Gets the ReadOnlyOptionalResource property"""
         result = self._client.invoke_capability(
             'Aspire.Hosting.CodeGeneration.TypeScript.Tests.TestTypes/TestHandlePropertyContext.readOnlyOptionalResource',
             {'context': self._handle}
         )
-        return typing.cast(TestResourceContext, result)
+        return typing.cast(TestResourceContext | None, result)
 
     @_uncached_property
     def required_resource(self) -> TestResourceContext:
@@ -7269,16 +7269,16 @@ class TestHandlePropertyContext:
         return typing.cast(TestResourceContext, result)
 
     @_uncached_property
-    def optional_context(self) -> TestEnvironmentContext:
+    def optional_context(self) -> TestEnvironmentContext | None:
         """Gets the OptionalContext property"""
         result = self._client.invoke_capability(
             'Aspire.Hosting.CodeGeneration.TypeScript.Tests.TestTypes/TestHandlePropertyContext.optionalContext',
             {'context': self._handle}
         )
-        return typing.cast(TestEnvironmentContext, result)
+        return typing.cast(TestEnvironmentContext | None, result)
 
     @optional_context.setter
-    def optional_context(self, value: TestEnvironmentContext) -> None:
+    def optional_context(self, value: TestEnvironmentContext | None) -> None:
         """Sets the OptionalContext property"""
         self._client.invoke_capability(
             'Aspire.Hosting.CodeGeneration.TypeScript.Tests.TestTypes/TestHandlePropertyContext.setOptionalContext',
@@ -7286,13 +7286,13 @@ class TestHandlePropertyContext:
         )
 
     @_cached_property
-    def read_only_optional_context(self) -> TestEnvironmentContext:
+    def read_only_optional_context(self) -> TestEnvironmentContext | None:
         """Gets the ReadOnlyOptionalContext property"""
         result = self._client.invoke_capability(
             'Aspire.Hosting.CodeGeneration.TypeScript.Tests.TestTypes/TestHandlePropertyContext.readOnlyOptionalContext',
             {'context': self._handle}
         )
-        return typing.cast(TestEnvironmentContext, result)
+        return typing.cast(TestEnvironmentContext | None, result)
 
     @_uncached_property
     def required_context(self) -> TestEnvironmentContext:

@@ -241,7 +241,7 @@ public class AtsPythonCodeGeneratorTests
     }
 
     [Fact]
-    public void TwoPassScanning_GeneratesNullableHandleReturns()
+    public void TwoPassScanning_GeneratesNullableHandles()
     {
         var atsContext = CreateContextFromBothAssemblies();
         var aspirePy = _generator.GenerateDistributedApplication(atsContext)["aspire_app.py"];
@@ -250,6 +250,10 @@ public class AtsPythonCodeGeneratorTests
         Assert.Contains("def find_resource_by_name(self, name: str) -> AbstractResource | None:", aspirePy, StringComparison.Ordinal);
         Assert.Contains("def get_endpoint(self, name: str) -> EndpointReference | None:", aspirePy, StringComparison.Ordinal);
         Assert.Contains("def get_endpoint(self, name: str) -> EndpointReference:", aspirePy, StringComparison.Ordinal);
+        Assert.Contains("def optional_resource(self) -> TestResourceContext | None:", aspirePy, StringComparison.Ordinal);
+        Assert.Contains("def optional_resource(self, value: TestResourceContext | None) -> None:", aspirePy, StringComparison.Ordinal);
+        Assert.Contains("def optional_context(self) -> TestEnvironmentContext | None:", aspirePy, StringComparison.Ordinal);
+        Assert.Contains("def optional_context(self, value: TestEnvironmentContext | None) -> None:", aspirePy, StringComparison.Ordinal);
     }
 
     [Fact]

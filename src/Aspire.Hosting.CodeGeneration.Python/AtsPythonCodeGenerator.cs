@@ -1287,7 +1287,7 @@ internal sealed class AtsPythonCodeGenerator : ICodeGenerator
                 sb.AppendLine();
                 return;
             }
-            var returnType = MapTypeRefToPython(getter.ReturnType);
+            var returnType = MapCapabilityReturnTypeToPython(getter.ReturnType);
             var propertyType = setter != null ? "@_uncached_property" : "@_cached_property";
             if (!string.IsNullOrEmpty(getter.Description))
             {
@@ -1319,7 +1319,7 @@ internal sealed class AtsPythonCodeGenerator : ICodeGenerator
             var valueParam = setter.Parameters.FirstOrDefault(p => p.Name == "value");
             if (valueParam != null)
             {
-                var valueType = MapTypeRefToPython(valueParam.Type);
+                var valueType = MapCapabilityReturnTypeToPython(valueParam.Type);
 
                 if (!string.IsNullOrEmpty(setter.Description))
                 {

@@ -300,7 +300,7 @@ public class AtsRustCodeGeneratorTests
     }
 
     [Fact]
-    public void TwoPassScanning_GeneratesNullableHandleReturns()
+    public void TwoPassScanning_GeneratesNullableHandles()
     {
         var atsContext = CreateContextFromBothAssemblies();
         var aspireRs = _generator.GenerateDistributedApplication(atsContext)["aspire.rs"].ReplaceLineEndings("\n");
@@ -310,6 +310,18 @@ public class AtsRustCodeGeneratorTests
         Assert.Contains("pub fn get_endpoint(&self, name: &str) -> Result<Option<EndpointReference>, Box<dyn std::error::Error>>", aspireRs, StringComparison.Ordinal);
         Assert.Contains("pub fn get_endpoint(&self, name: &str) -> Result<EndpointReference, Box<dyn std::error::Error>>", aspireRs, StringComparison.Ordinal);
         Assert.Contains("if result.is_null() {\n            return Ok(None);", aspireRs, StringComparison.Ordinal);
+        Assert.Contains("pub fn set_optional_resource(&self, value: Option<&TestResourceContext>)", aspireRs, StringComparison.Ordinal);
+        Assert.Contains("pub fn set_optional_context(&self, value: Option<&TestEnvironmentContext>)", aspireRs, StringComparison.Ordinal);
+        Assert.Contains(
+            """
+                    let value = match value {
+                        Some(v) => v.handle().to_json(),
+                        None => Value::Null,
+                    };
+                    args.insert("value".to_string(), value);
+            """.ReplaceLineEndings("\n"),
+            aspireRs,
+            StringComparison.Ordinal);
     }
 
     [Fact]

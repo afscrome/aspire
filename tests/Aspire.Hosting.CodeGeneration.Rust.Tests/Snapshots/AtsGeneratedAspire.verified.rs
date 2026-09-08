@@ -994,10 +994,14 @@ impl TestHandlePropertyContext {
     }
 
     /// Sets the OptionalResource property
-    pub fn set_optional_resource(&self, value: &TestResourceContext) -> Result<TestHandlePropertyContext, Box<dyn std::error::Error>> {
+    pub fn set_optional_resource(&self, value: Option<&TestResourceContext>) -> Result<TestHandlePropertyContext, Box<dyn std::error::Error>> {
         let mut args: HashMap<String, Value> = HashMap::new();
         args.insert("context".to_string(), self.handle.to_json());
-        args.insert("value".to_string(), value.handle().to_json());
+        let value = match value {
+            Some(v) => v.handle().to_json(),
+            None => Value::Null,
+        };
+        args.insert("value".to_string(), value);
         let result = self.client.invoke_capability("Aspire.Hosting.CodeGeneration.TypeScript.Tests.TestTypes/TestHandlePropertyContext.setOptionalResource", args)?;
         let handle: Handle = serde_json::from_value(result)?;
         Ok(TestHandlePropertyContext::new(handle, self.client.clone()))
@@ -1056,10 +1060,14 @@ impl TestHandlePropertyContext {
     }
 
     /// Sets the OptionalContext property
-    pub fn set_optional_context(&self, value: &TestEnvironmentContext) -> Result<TestHandlePropertyContext, Box<dyn std::error::Error>> {
+    pub fn set_optional_context(&self, value: Option<&TestEnvironmentContext>) -> Result<TestHandlePropertyContext, Box<dyn std::error::Error>> {
         let mut args: HashMap<String, Value> = HashMap::new();
         args.insert("context".to_string(), self.handle.to_json());
-        args.insert("value".to_string(), value.handle().to_json());
+        let value = match value {
+            Some(v) => v.handle().to_json(),
+            None => Value::Null,
+        };
+        args.insert("value".to_string(), value);
         let result = self.client.invoke_capability("Aspire.Hosting.CodeGeneration.TypeScript.Tests.TestTypes/TestHandlePropertyContext.setOptionalContext", args)?;
         let handle: Handle = serde_json::from_value(result)?;
         Ok(TestHandlePropertyContext::new(handle, self.client.clone()))

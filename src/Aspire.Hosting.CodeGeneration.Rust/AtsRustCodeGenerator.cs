@@ -492,7 +492,9 @@ internal sealed class AtsRustCodeGenerator : ICodeGenerator
             {
                 // Handle wrappers are passed by reference
                 var handleTypeName = MapTypeRefToRust(parameter.Type, false);
-                paramType = parameter.IsOptional ? $"Option<&{handleTypeName}>" : $"&{handleTypeName}";
+                paramType = parameter.IsOptional || parameter.Type?.IsNullable == true
+                    ? $"Option<&{handleTypeName}>"
+                    : $"&{handleTypeName}";
             }
             else
             {
@@ -541,6 +543,14 @@ internal sealed class AtsRustCodeGenerator : ICodeGenerator
                     WriteLine($"        if let Some(ref v) = {paramName} {{");
                     WriteLine($"            args.insert(\"{parameter.Name}\".to_string(), v.handle().to_json());");
                     WriteLine("        }");
+                }
+                else if (parameter.Type?.IsNullable == true)
+                {
+                    WriteLine($"        let value = match {paramName} {{");
+                    WriteLine("            Some(v) => v.handle().to_json(),");
+                    WriteLine("            None => Value::Null,");
+                    WriteLine("        };");
+                    WriteLine($"        args.insert(\"{parameter.Name}\".to_string(), value);");
                 }
                 else
                 {
