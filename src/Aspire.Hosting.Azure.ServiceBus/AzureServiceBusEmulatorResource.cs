@@ -9,7 +9,8 @@ namespace Aspire.Hosting.Azure;
 /// Wraps an <see cref="AzureServiceBusResource" /> in a type that exposes container extension methods.
 /// </summary>
 /// <param name="innerResource">The inner resource used to store annotations.</param>
-public class AzureServiceBusEmulatorResource(AzureServiceBusResource innerResource) : ContainerResource(innerResource.Name), IResource
+public class AzureServiceBusEmulatorResource(AzureServiceBusResource innerResource)
+    : ContainerResource(innerResource.Name), IResource, IContainerProjection<AzureServiceBusResource, AzureServiceBusEmulatorResource>
 {
     // The path to the emulator configuration files in the container.
     internal const string EmulatorConfigFilesPath = "/ServiceBus_Emulator/ConfigFiles";
@@ -20,4 +21,7 @@ public class AzureServiceBusEmulatorResource(AzureServiceBusResource innerResour
 
     /// <inheritdoc />
     public override ResourceAnnotationCollection Annotations => _innerResource.Annotations;
+
+    /// <inheritdoc />
+    public static AzureServiceBusEmulatorResource CreateProjection(AzureServiceBusResource owner) => new(owner);
 }

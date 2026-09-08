@@ -4,6 +4,7 @@
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using Aspire.Hosting.ApplicationModel;
+using Aspire.Hosting.Tests.Utils;
 using Aspire.Hosting.Utils;
 
 namespace Aspire.Hosting.Azure.Tests;
@@ -180,6 +181,7 @@ public class AzureSqlExtensionsTests
 
         var sql = builder.AddAzureSqlServer("sql");
         IResourceBuilder<AzureSqlDatabaseResource>? db = null;
+        SqlServerServerResource? projection = null;
 
         if (addDatabaseBefore)
         {
@@ -194,6 +196,7 @@ public class AzureSqlExtensionsTests
 
         sql.RunAsContainer(c =>
         {
+            projection = c.Resource;
             c.WithAnnotation(new Dummy2Annotation());
         });
 
@@ -225,7 +228,36 @@ public class AzureSqlExtensionsTests
 
         Assert.True(dbResourceInModel.TryGetAnnotationsOfType<Dummy1Annotation>(out var dbAnnotations));
         Assert.Single(dbAnnotations);
+        Assert.Contains(db!.Resource.Annotations, annotation => annotation is HealthCheckAnnotation);
+        ProjectionTestHelpers.AssertProjection(sql, Assert.IsType<AzureSqlServerContainerResource>(projection));
+        Assert.Same(db.Resource, dbResourceInModel);
     }   
+
+    [Fact]
+    public async Task RunAsContainerReappliesContainerDefaults()
+    {
+        using var builder = TestDistributedApplicationBuilder.Create();
+
+        var sql = builder.AddAzureSqlServer("sql").RunAsContainer();
+        var image = Assert.Single(sql.Resource.Annotations.OfType<ContainerImageAnnotation>());
+        var defaultImage = image.Image;
+
+        sql.RunAsContainer(container => container
+            .WithImage("custom")
+            .WithEnvironment("ACCEPT_EULA", "N")
+            .WithEnvironment("MSSQL_SA_PASSWORD", "incorrect"));
+        Assert.Equal("custom", image.Image);
+
+        sql.RunAsContainer();
+        Assert.Equal(defaultImage, image.Image);
+
+        var environment = await EnvironmentVariableEvaluator.GetEnvironmentVariablesAsync(
+            sql.Resource,
+            DistributedApplicationOperation.Run,
+            TestServiceProvider.Instance);
+        Assert.Equal("Y", environment["ACCEPT_EULA"]);
+        Assert.NotEqual("incorrect", environment["MSSQL_SA_PASSWORD"]);
+    }
 
     private sealed class Dummy1Annotation : IResourceAnnotation
     {

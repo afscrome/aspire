@@ -16,8 +16,12 @@ namespace Aspire.Hosting.Azure.DurableTask;
 /// and metadata remain consistent across both representations.
 /// </remarks>
 [Experimental("ASPIREDURABLETASK001", UrlFormat = "https://aka.ms/aspire/diagnostics/{0}")]
-public sealed class DurableTaskSchedulerEmulatorResource(DurableTaskSchedulerResource scheduler) : ContainerResource(scheduler.Name)
+public sealed class DurableTaskSchedulerEmulatorResource(DurableTaskSchedulerResource scheduler)
+    : ContainerResource(scheduler.Name), IContainerProjection<DurableTaskSchedulerResource, DurableTaskSchedulerEmulatorResource>
 {
     /// <inheritdoc />
     public override ResourceAnnotationCollection Annotations => scheduler.Annotations;
+
+    /// <inheritdoc />
+    public static DurableTaskSchedulerEmulatorResource CreateProjection(DurableTaskSchedulerResource owner) => new(owner);
 }

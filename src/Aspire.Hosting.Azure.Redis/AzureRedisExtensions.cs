@@ -157,21 +157,34 @@ public static class AzureRedisExtensions
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        if (builder.ApplicationBuilder.ExecutionContext.IsPublishMode)
-        {
-            return builder;
-        }
-
         var azureResource = builder.Resource;
-        builder.ApplicationBuilder.Resources.Remove(azureResource);
+        return builder.WithContainerProjection(
+            DistributedApplicationOperation.Run,
+            () =>
+            {
+                var password = ParameterResourceBuilderExtensions.CreateDefaultPasswordParameter(
+                    builder.ApplicationBuilder,
+                    $"{azureResource.Name}-password",
+                    special: false);
+                return new AzureRedisCacheContainerResource(azureResource, password);
+            },
+            container =>
+            {
+                if (!container.Resource.IsConfigured)
+                {
+                    azureResource.SetInnerResource(container.Resource);
+                    container.ConfigureRedis();
+                    container.Resource.IsConfigured = true;
+                }
+                else
+                {
+                    container
+                        .ApplyRedisContainerDefaults()
+                        .ApplyRedisEnvironmentDefaults();
+                }
 
-        var redisContainer = builder.ApplicationBuilder.AddRedis(azureResource.Name);
-
-        azureResource.SetInnerResource(redisContainer.Resource);
-
-        configureContainer?.Invoke(redisContainer);
-
-        return builder;
+                configureContainer?.Invoke(container);
+            });
     }
 
     /// <summary>

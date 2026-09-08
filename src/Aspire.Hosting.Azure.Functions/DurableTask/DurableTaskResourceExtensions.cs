@@ -150,21 +150,13 @@ public static class DurableTaskResourceExtensions
                .WithEndpoint("grpc", endpoint => endpoint.Transport = "http2")
                .WithHttpEndpoint(name: "http", targetPort: 8081)
                .WithHttpEndpoint(name: "dashboard", targetPort: 8082)
-               .WithUrlForEndpoint("dashboard", c => c.DisplayText = "Scheduler Dashboard")
-               .WithAnnotation(new ContainerImageAnnotation
-               {
-                   Registry = DurableTaskSchedulerEmulatorContainerImageTags.Registry,
-                   Image = DurableTaskSchedulerEmulatorContainerImageTags.Image,
-                   Tag = DurableTaskSchedulerEmulatorContainerImageTags.Tag
-               });
+               .WithUrlForEndpoint("dashboard", c => c.DisplayText = "Scheduler Dashboard");
 
-        var emulatorResource = new DurableTaskSchedulerEmulatorResource(builder.Resource);
-
-        var surrogateBuilder =
-            builder
-                .ApplicationBuilder
-                .CreateResourceBuilder(emulatorResource)
-                .WithEnvironment(
+        return builder.RunAsContainerImage<DurableTaskSchedulerResource, DurableTaskSchedulerEmulatorResource>(
+            $"{DurableTaskSchedulerEmulatorContainerImageTags.Registry}/{DurableTaskSchedulerEmulatorContainerImageTags.Image}:{DurableTaskSchedulerEmulatorContainerImageTags.Tag}",
+            container =>
+            {
+                container.WithEnvironment(
                     context =>
                     {
                         ReferenceExpressionBuilder namesBuilder = new();
@@ -187,13 +179,11 @@ public static class DurableTaskResourceExtensions
 
                             namesBuilder.AppendFormatted(durableTaskHubNames[i]);
                         }
-
                         context.EnvironmentVariables["DTS_TASK_HUB_NAMES"] = namesBuilder.Build();
                     });
 
-        configureContainer?.Invoke(surrogateBuilder);
-
-        return builder;
+                configureContainer?.Invoke(container);
+            });
     }
 
     /// <summary>

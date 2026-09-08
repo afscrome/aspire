@@ -4,6 +4,7 @@
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using Aspire.Hosting.ApplicationModel;
+using Aspire.Hosting.Tests.Utils;
 using Aspire.Hosting.Utils;
 using Microsoft.Extensions.DependencyInjection;
 using static Aspire.Hosting.Utils.AzureManifestUtils;
@@ -158,6 +159,7 @@ public class AzureRedisExtensionsTests
         using var builder = TestDistributedApplicationBuilder.Create();
 
         var cache = builder.AddAzureRedis("cache");
+        RedisResource? projection = null;
 
         if (before)
         {
@@ -166,6 +168,7 @@ public class AzureRedisExtensionsTests
 
         cache.RunAsContainer(c =>
         {
+            projection = c.Resource;
             c.WithAnnotation(new Dummy2Annotation());
         });
 
@@ -181,6 +184,31 @@ public class AzureRedisExtensionsTests
 
         Assert.True(cacheInModel.TryGetAnnotationsOfType<Dummy2Annotation>(out var cacheAnnotations2));
         Assert.Single(cacheAnnotations2);
+        ProjectionTestHelpers.AssertProjection(cache, Assert.IsType<AzureRedisCacheContainerResource>(projection));
+    }
+
+    [Fact]
+    public async Task RunAsContainerReappliesContainerDefaults()
+    {
+        using var builder = TestDistributedApplicationBuilder.Create();
+
+        var cache = builder.AddAzureRedis("cache").RunAsContainer();
+        var image = Assert.Single(cache.Resource.Annotations.OfType<ContainerImageAnnotation>());
+        var defaultImage = image.Image;
+
+        cache.RunAsContainer(container => container
+            .WithImage("custom")
+            .WithEnvironment("REDIS_PASSWORD", "incorrect"));
+        Assert.Equal("custom", image.Image);
+
+        cache.RunAsContainer();
+        Assert.Equal(defaultImage, image.Image);
+
+        var environment = await EnvironmentVariableEvaluator.GetEnvironmentVariablesAsync(
+            cache.Resource,
+            DistributedApplicationOperation.Run,
+            TestServiceProvider.Instance);
+        Assert.NotEqual("incorrect", environment["REDIS_PASSWORD"]);
     }
 
     [Fact]
