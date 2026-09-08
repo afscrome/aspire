@@ -1,6 +1,7 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Aspire.Hosting.ApplicationModel;
 
 namespace Aspire.Hosting;
@@ -75,6 +76,7 @@ public static class ResourceProjectionBuilderExtensions
     /// not use the owner's name, when it does not share the owner's annotation collection, or when the resource is
     /// already projected as an incompatible container type.
     /// </exception>
+    [Experimental("ASPIREPROJECTIONS001", UrlFormat = "https://aka.ms/aspire/diagnostics/{0}")]
     [AspireExportIgnore(Reason = "Integration authoring primitive — integrations export their own RunAs/PublishAs overloads.")]
     public static IResourceBuilder<T> WithContainerProjection<T, TContainer>(
         this IResourceBuilder<T> builder,
@@ -251,6 +253,7 @@ public static class ResourceProjectionBuilderExtensions
     /// just the first part of the callback it passes.
     /// </para>
     /// </remarks>
+    [Experimental("ASPIREPROJECTIONS001", UrlFormat = "https://aka.ms/aspire/diagnostics/{0}")]
     [AspireExportIgnore(Reason = "Integration authoring primitive — integrations export their own RunAsContainer overloads.")]
     public static IResourceBuilder<T> RunAsContainerImage<T, TContainer>(
         this IResourceBuilder<T> builder,

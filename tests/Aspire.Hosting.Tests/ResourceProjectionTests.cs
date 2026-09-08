@@ -1,7 +1,11 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+#pragma warning disable ASPIREPROJECTIONS001 // Type is for evaluation purposes only and is subject to change or removal in future updates. Suppress this diagnostic to proceed.
+
 using System.Collections.ObjectModel;
+using System.Diagnostics.CodeAnalysis;
+using System.Reflection;
 using Aspire.Dashboard.Model;
 using Aspire.Hosting.Tests.Utils;
 using Aspire.Hosting.Utils;
@@ -12,6 +16,54 @@ namespace Aspire.Hosting.Tests;
 [Trait("Partition", "5")]
 public class ResourceProjectionTests
 {
+    [Fact]
+    public void OnlyProjectionAuthoringApisAreExperimental()
+    {
+        static void AssertProjectionExperimental(MemberInfo member)
+        {
+            var attribute = Assert.Single(member.GetCustomAttributes<ExperimentalAttribute>());
+
+            Assert.Equal("ASPIREPROJECTIONS001", attribute.DiagnosticId);
+            Assert.Equal("https://aka.ms/aspire/diagnostics/{0}", attribute.UrlFormat);
+        }
+
+        AssertProjectionExperimental(typeof(IContainerProjection<,>));
+        Assert.Empty(typeof(ResourceProjectionBuilderExtensions).GetCustomAttributes<ExperimentalAttribute>());
+
+        var projectionMethods = typeof(ResourceProjectionBuilderExtensions)
+            .GetMethods(BindingFlags.Public | BindingFlags.Static);
+        var withContainerProjection = Assert.Single(
+            projectionMethods,
+            method => method.Name == nameof(ResourceProjectionBuilderExtensions.WithContainerProjection));
+        AssertProjectionExperimental(withContainerProjection);
+
+        var runAsContainerImageMethods = projectionMethods
+            .Where(method => method.Name == nameof(ResourceProjectionBuilderExtensions.RunAsContainerImage))
+            .ToList();
+        Assert.Equal(2, runAsContainerImageMethods.Count);
+
+        var userFacingRunAsContainerImage = Assert.Single(
+            runAsContainerImageMethods,
+            method => method.GetGenericArguments().Length == 1);
+        var typedRunAsContainerImage = Assert.Single(
+            runAsContainerImageMethods,
+            method => method.GetGenericArguments().Length == 2);
+        Assert.Empty(userFacingRunAsContainerImage.GetCustomAttributes<ExperimentalAttribute>());
+        AssertProjectionExperimental(typedRunAsContainerImage);
+
+        var asContainer = typeof(ContainerResourceExtensions).GetMethod(
+            nameof(ContainerResourceExtensions.AsContainer),
+            BindingFlags.Public | BindingFlags.Static);
+        var getOwnerOrSelf = typeof(ResourceExtensions).GetMethod(
+            nameof(ResourceExtensions.GetOwnerOrSelf),
+            BindingFlags.Public | BindingFlags.Static);
+
+        Assert.NotNull(asContainer);
+        Assert.NotNull(getOwnerOrSelf);
+        Assert.Empty(asContainer!.GetCustomAttributes<ExperimentalAttribute>());
+        Assert.Empty(getOwnerOrSelf!.GetCustomAttributes<ExperimentalAttribute>());
+    }
+
     [Fact]
     public void GetOwnerOrSelfIsPublicAndPreservesOrdinaryResourceIdentity()
     {
