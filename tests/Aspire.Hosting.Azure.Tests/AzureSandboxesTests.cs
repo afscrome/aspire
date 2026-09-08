@@ -3153,7 +3153,6 @@ public class AzureSandboxesTests(ITestOutputHelper output)
             worker.Resource,
             "worker:latest");
 
-        Assert.True(runtime.WasInspectImageConfigCalled);
         Assert.Equal(["worker:latest"], runtime.InspectImageConfigCalls);
         Assert.Equal(["/app/worker"], metadata.Entrypoint);
         Assert.Equal(["--mode", "worker"], metadata.Command);

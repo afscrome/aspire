@@ -188,7 +188,12 @@ public class DotnetProjectResourceTests(ITestOutputHelper outputHelper)
         });
 
         using var app = builder.Build();
-        await Assert.ThrowsAsync<DistributedApplicationException>(() => ExecutePipelineAsync(app));
+
+        var exception = await Assert.ThrowsAsync<DistributedApplicationException>(() => ExecutePipelineAsync(app));
+
+        AssertUnsupportedPublishMessage(
+            exception,
+            "Resource 'app' is a DotnetProjectResource.");
 
         Assert.False(workExecuted);
     }

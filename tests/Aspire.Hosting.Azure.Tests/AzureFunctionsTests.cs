@@ -53,16 +53,19 @@ public class AzureFunctionsTests(ITestOutputHelper outputHelper)
     public async Task ProjectedAzureFunctionsProjectRetainsDefaultHostStorage()
     {
         using var builder = TestDistributedApplicationBuilder.Create(DistributedApplicationOperation.Publish);
-        builder.AddAzureFunctionsProject<TestProjectWithDirectory>("funcapp")
+        var functions = builder.AddAzureFunctionsProject<TestProjectWithDirectory>("funcapp")
             .PublishAsDockerFile();
         using var app = builder.Build();
 
         await ExecuteBeforeStartHooksAsync(app, default);
 
-        Assert.Contains(
-            builder.Resources,
-            resource => resource is AzureStorageResource &&
-                resource.Name.StartsWith(AzureFunctionsProjectResourceExtensions.DefaultAzureFunctionsHostStorageName));
+        var storage = Assert.Single(
+            builder.Resources.OfType<AzureStorageResource>(),
+            resource => resource.Name.StartsWith(AzureFunctionsProjectResourceExtensions.DefaultAzureFunctionsHostStorageName));
+        var relationship = Assert.Single(functions.Resource.Annotations.OfType<ResourceRelationshipAnnotation>());
+
+        Assert.Equal("Reference", relationship.Type);
+        Assert.Same(storage, relationship.Resource);
     }
 
     [Fact]

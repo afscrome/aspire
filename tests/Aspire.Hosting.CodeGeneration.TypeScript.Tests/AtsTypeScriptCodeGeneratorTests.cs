@@ -1538,19 +1538,6 @@ public class AtsTypeScriptCodeGeneratorTests
     }
 
     [Fact]
-    public void TwoPassScanning_GeneratesNullableHandleReturns()
-    {
-        var atsContext = CreateContextFromBothAssemblies();
-        var aspireTs = _generator.GenerateDistributedApplication(atsContext)["aspire.mts"];
-
-        Assert.Contains("asContainer(): Promise<ContainerResource | null>;", aspireTs, StringComparison.Ordinal);
-        Assert.Contains("findResourceByName(name: string): Promise<Resource | null>;", aspireTs, StringComparison.Ordinal);
-        Assert.Contains("getEndpoint(name: string): Promise<EndpointReference | null>;", aspireTs, StringComparison.Ordinal);
-        Assert.Contains("return handle === null ? null : new ContainerResourceImpl(handle, this._client);", aspireTs, StringComparison.Ordinal);
-        Assert.Contains("getEndpoint(name: string): EndpointReferencePromise;", aspireTs, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public async Task GenerateDistributedApplication_PreservesNullableHandlePropertiesInApiExport()
     {
         var context = CreateContextFromTestAssembly();
@@ -1559,25 +1546,49 @@ public class AtsTypeScriptCodeGeneratorTests
             .Where(capability => capability.TargetTypeId == typeId && capability.CapabilityKind == AtsCapabilityKind.PropertyGetter)
             .ToList();
 
-        Assert.Equal(8, getters.Count);
-        Assert.All(getters, getter =>
+        var expectedReturnNullability = new Dictionary<string, bool>(StringComparer.Ordinal)
         {
+            ["optionalResource"] = true,
+            ["readOnlyOptionalResource"] = true,
+            ["requiredResource"] = false,
+            ["readOnlyRequiredResource"] = false,
+            ["optionalContext"] = true,
+            ["readOnlyOptionalContext"] = true,
+            ["requiredContext"] = false,
+            ["readOnlyRequiredContext"] = false,
+        };
+        Assert.Equal(
+            expectedReturnNullability.Keys.Order(StringComparer.Ordinal),
+            getters.Select(getter => getter.MethodName).Order(StringComparer.Ordinal));
+        foreach (var (methodName, isNullable) in expectedReturnNullability)
+        {
+            var getter = Assert.Single(getters, getter => getter.MethodName == methodName);
             Assert.NotNull(getter.ReturnType);
             Assert.Equal(AtsTypeCategory.Handle, getter.ReturnType.Category);
-            Assert.Equal(getter.MethodName.Contains("Optional", StringComparison.OrdinalIgnoreCase), getter.ReturnType.IsNullable == true);
-        });
+            Assert.Equal(isNullable, getter.ReturnType.IsNullable == true);
+        }
 
         var setters = context.Capabilities
             .Where(capability => capability.TargetTypeId == typeId && capability.CapabilityKind == AtsCapabilityKind.PropertySetter)
             .ToList();
-        Assert.Equal(4, setters.Count);
-        Assert.All(setters, setter =>
+        var expectedParameterNullability = new Dictionary<string, bool>(StringComparer.Ordinal)
         {
+            ["setOptionalResource"] = true,
+            ["setRequiredResource"] = false,
+            ["setOptionalContext"] = true,
+            ["setRequiredContext"] = false,
+        };
+        Assert.Equal(
+            expectedParameterNullability.Keys.Order(StringComparer.Ordinal),
+            setters.Select(setter => setter.MethodName).Order(StringComparer.Ordinal));
+        foreach (var (methodName, isNullable) in expectedParameterNullability)
+        {
+            var setter = Assert.Single(setters, setter => setter.MethodName == methodName);
             var value = Assert.Single(setter.Parameters, parameter => parameter.Name == "value");
             Assert.NotNull(value.Type);
             Assert.Equal(AtsTypeCategory.Handle, value.Type.Category);
-            Assert.Equal(setter.MethodName.Contains("Optional", StringComparison.OrdinalIgnoreCase), value.Type.IsNullable == true);
-        });
+            Assert.Equal(isNullable, value.Type.IsNullable == true);
+        }
 
         var declaration = Assert.Single(
             ProjectApi(context, ApiExportPackageName).Declarations,

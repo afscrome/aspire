@@ -362,6 +362,30 @@ public class DistributedApplicationPipelineTests(ITestOutputHelper testOutputHel
     }
 
     [Fact]
+    public async Task ResolveStepsAsync_WithRepeatedDockerfileConfiguration_PreservesCustomStepWithoutDuplicatingBuildStep()
+    {
+        using var builder = CreatePipelineTestBuilder(step: "build-api");
+        builder.Services.AddSingleton<IResourceContainerImageManager>(new MockImageBuilder());
+        var container = builder.AddContainer("api", "api:latest");
+        container.WithPipelineStepFactory(_ => new PipelineStep
+        {
+            Name = "custom",
+            Resource = container.Resource,
+            Action = _ => Task.CompletedTask
+        });
+        container
+            .WithDockerfile(".")
+            .WithDockerfile(".");
+        var pipeline = new DistributedApplicationPipeline();
+        var context = CreateDeployingContext(builder.Build());
+
+        var steps = await pipeline.ResolveStepsAsync(context).DefaultTimeout();
+
+        Assert.Single(steps, step => step.Name == "custom");
+        Assert.Single(steps, step => step.Name == "build-api");
+    }
+
+    [Fact]
     public async Task ResolveStepsAsync_WithStepRegisteredThroughProjection_AssociatesStepWithOwner()
     {
         using var builder = CreatePipelineTestBuilder();

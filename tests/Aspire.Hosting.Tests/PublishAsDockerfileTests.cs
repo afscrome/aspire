@@ -2,9 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 #pragma warning disable ASPIREFILESYSTEM001 // Type is for evaluation purposes only
-#pragma warning disable ASPIREPIPELINES001 // Type is for evaluation purposes only
 
-using Aspire.Hosting.Pipelines;
 using Aspire.Hosting.Tests.Utils;
 using Aspire.Hosting.Utils;
 using Microsoft.AspNetCore.InternalTesting;
@@ -591,29 +589,6 @@ public class PublishAsDockerfileTests(ITestOutputHelper outputHelper)
         
         // Both callbacks should have been invoked
         Assert.Equal(2, callbackCount);
-    }
-
-    [Fact]
-    public void WithDockerfilePreservesUnrelatedPipelineStepsAndIsIdempotent()
-    {
-        var builder = TestDistributedApplicationBuilder.Create(DistributedApplicationOperation.Publish);
-        var container = builder.AddContainer("api", "api:latest");
-
-        container.WithPipelineStepFactory(_ => new PipelineStep
-        {
-            Name = "custom",
-            Resource = container.Resource,
-            Action = _ => Task.CompletedTask
-        });
-
-        container
-            .WithDockerfile(".")
-            .WithDockerfile(".");
-
-        // PipelineStepAnnotation supports multiple independent factories. WithDockerfile must own and replace only
-        // its build/push factory rather than deleting the caller's factory or appending another copy of its own.
-        Assert.Equal(2, container.Resource.Annotations.OfType<PipelineStepAnnotation>().Count());
-        Assert.Single(container.Resource.Annotations.OfType<PipelineConfigurationAnnotation>());
     }
 
     [Fact]

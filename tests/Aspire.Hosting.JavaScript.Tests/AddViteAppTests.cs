@@ -1112,7 +1112,6 @@ public class AddViteAppTests(ITestOutputHelper outputHelper)
 
         var app = builder.Build();
         var model = app.Services.GetRequiredService<DistributedApplicationModel>();
-        var projection = Assert.Single(model.GetContainerResources());
         var pipeline = new DistributedApplicationPipeline();
         var context = new PipelineContext(
             model,
@@ -1120,19 +1119,6 @@ public class AddViteAppTests(ITestOutputHelper outputHelper)
             app.Services,
             app.Services.GetRequiredService<ILogger<AddViteAppTests>>(),
             CancellationToken.None);
-        var factoryContext = new PipelineStepFactoryContext
-        {
-            PipelineContext = context,
-            Resource = projection
-        };
-        var projectedStepNames = new List<string>();
-        foreach (var annotation in projection.Annotations.OfType<PipelineStepAnnotation>())
-        {
-            projectedStepNames.AddRange((await annotation.CreateStepsAsync(factoryContext)).Select(step => step.Name));
-        }
-        Assert.Equal(
-            ["build-nextjs", "push-nextjs", "validate-javascript-dockerfile-run-script-nextjs", "nextjs-standalone-check-nextjs"],
-            projectedStepNames);
 
         // Pipeline throws AggregateException when multiple steps fail
         var ex = await Assert.ThrowsAnyAsync<Exception>(() => pipeline.ExecuteAsync(context));

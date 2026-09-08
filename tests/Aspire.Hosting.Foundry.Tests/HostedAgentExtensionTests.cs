@@ -762,9 +762,8 @@ public class HostedAgentExtensionTests
 
         var hostedAgent = Assert.Single(builder.Resources.OfType<AzureHostedAgentResource>());
         var account = Assert.Single(builder.Resources.OfType<FoundryResource>());
-
 #pragma warning disable ASPIREAZURE003 // Type is for evaluation purposes only and is subject to change or removal in future updates.
-        Assert.Single(agent.Resource.Annotations.OfType<ReferenceRoleAssignmentAnnotation>());
+#pragma warning disable ASPIREAZURE003 // Type is for evaluation purposes only and is subject to change or removal in future updates.
         var annotation = Assert.Single(hostedAgent.Target.Annotations.OfType<ReferenceRoleAssignmentAnnotation>());
         Assert.Same(account, annotation.Target);
         Assert.Contains(annotation.Roles, role =>

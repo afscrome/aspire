@@ -344,7 +344,9 @@ public class AddJavaScriptAppTests(ITestOutputHelper outputHelper)
 
         var manifest = await ManifestUtils.GetManifest(app.Resource, workspace.Path);
 
-        Assert.Contains("--configured", manifest.ToJsonString());
+        Assert.Equal(
+            ["--configured"],
+            manifest["args"]!.AsArray().Select(argument => argument!.GetValue<string>()));
     }
 
     [Fact]

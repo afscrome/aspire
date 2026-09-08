@@ -193,22 +193,27 @@ public class AzureRedisExtensionsTests
         using var builder = TestDistributedApplicationBuilder.Create();
 
         var cache = builder.AddAzureRedis("cache").RunAsContainer();
-        var image = Assert.Single(cache.Resource.Annotations.OfType<ContainerImageAnnotation>());
-        var defaultImage = image.Image;
+        var container = Assert.IsAssignableFrom<RedisResource>(cache.Resource.AsContainer());
+        Assert.True(container.TryGetContainerImageName(out var defaultImage));
 
         cache.RunAsContainer(container => container
             .WithImage("custom")
             .WithEnvironment("REDIS_PASSWORD", "incorrect"));
-        Assert.Equal("custom", image.Image);
+        Assert.True(cache.Resource.AsContainer()!.TryGetContainerImageName(out var customImage));
+        Assert.Equal("docker.io/custom:latest", customImage);
 
         cache.RunAsContainer();
-        Assert.Equal(defaultImage, image.Image);
+        Assert.True(cache.Resource.AsContainer()!.TryGetContainerImageName(out var reappliedImage));
+        Assert.Equal(defaultImage, reappliedImage);
+        container = Assert.IsAssignableFrom<RedisResource>(cache.Resource.AsContainer());
 
         var environment = await EnvironmentVariableEvaluator.GetEnvironmentVariablesAsync(
             cache.Resource,
             DistributedApplicationOperation.Run,
             TestServiceProvider.Instance);
-        Assert.NotEqual("incorrect", environment["REDIS_PASSWORD"]);
+        Assert.Equal(
+            await container.PasswordParameter!.GetValueAsync(CancellationToken.None),
+            environment["REDIS_PASSWORD"]);
     }
 
     [Fact]

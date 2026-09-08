@@ -239,24 +239,29 @@ public class AzureSqlExtensionsTests
         using var builder = TestDistributedApplicationBuilder.Create();
 
         var sql = builder.AddAzureSqlServer("sql").RunAsContainer();
-        var image = Assert.Single(sql.Resource.Annotations.OfType<ContainerImageAnnotation>());
-        var defaultImage = image.Image;
+        var container = Assert.IsAssignableFrom<SqlServerServerResource>(sql.Resource.AsContainer());
+        Assert.True(container.TryGetContainerImageName(out var defaultImage));
 
         sql.RunAsContainer(container => container
             .WithImage("custom")
             .WithEnvironment("ACCEPT_EULA", "N")
             .WithEnvironment("MSSQL_SA_PASSWORD", "incorrect"));
-        Assert.Equal("custom", image.Image);
+        Assert.True(sql.Resource.AsContainer()!.TryGetContainerImageName(out var customImage));
+        Assert.Equal("mcr.microsoft.com/custom:latest", customImage);
 
         sql.RunAsContainer();
-        Assert.Equal(defaultImage, image.Image);
+        Assert.True(sql.Resource.AsContainer()!.TryGetContainerImageName(out var reappliedImage));
+        Assert.Equal(defaultImage, reappliedImage);
+        container = Assert.IsAssignableFrom<SqlServerServerResource>(sql.Resource.AsContainer());
 
         var environment = await EnvironmentVariableEvaluator.GetEnvironmentVariablesAsync(
             sql.Resource,
             DistributedApplicationOperation.Run,
             TestServiceProvider.Instance);
         Assert.Equal("Y", environment["ACCEPT_EULA"]);
-        Assert.NotEqual("incorrect", environment["MSSQL_SA_PASSWORD"]);
+        Assert.Equal(
+            await container.PasswordParameter.GetValueAsync(CancellationToken.None),
+            environment["MSSQL_SA_PASSWORD"]);
     }
 
     private sealed class Dummy1Annotation : IResourceAnnotation

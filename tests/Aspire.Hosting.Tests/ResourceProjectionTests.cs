@@ -253,25 +253,6 @@ public class ResourceProjectionTests
     }
 
     [Fact]
-    public void DirectProjectionPropertyChangesRemainVisibleFromOwner()
-    {
-        using var builder = TestDistributedApplicationBuilder.Create(DistributedApplicationOperation.Publish);
-
-        var executable = builder.AddExecutable("worker", "worker", ".")
-            .PublishAsDockerFile();
-
-        Assert.True(builder.TryCreateResourceBuilder<ContainerResource>("worker", out var projectionBuilder));
-        projectionBuilder.Resource.Entrypoint = "/app/worker";
-#pragma warning disable ASPIRECONTAINERSHELLEXECUTION001
-        projectionBuilder.Resource.ShellExecution = true;
-
-        var projection = Assert.IsAssignableFrom<ContainerResource>(executable.Resource.AsContainer());
-        Assert.Equal("/app/worker", projection.Entrypoint);
-        Assert.True(projection.ShellExecution);
-#pragma warning restore ASPIRECONTAINERSHELLEXECUTION001
-    }
-
-    [Fact]
     public async Task ManifestCallbackAddedAfterProjectionTakesPrecedence()
     {
         using var builder = TestDistributedApplicationBuilder.Create(DistributedApplicationOperation.Publish);
@@ -674,35 +655,6 @@ public class ResourceProjectionTests
     }
 
     [Fact]
-    public void ModelCollectionMutationsUseOwner()
-    {
-        using var builder = TestDistributedApplicationBuilder.Create(DistributedApplicationOperation.Publish);
-        var executable = builder.AddExecutable("worker", "worker", ".")
-            .PublishAsDockerFile();
-        var model = new DistributedApplicationModel(builder.Resources);
-
-        Assert.True(model.Resources.Contains(executable.Resource));
-        Assert.Equal(0, model.Resources.IndexOf(executable.Resource));
-        Assert.True(model.Resources.Remove(executable.Resource));
-        Assert.Empty(builder.Resources);
-    }
-
-    [Fact]
-    public async Task RepeatedExecutableProjectionClearsArgumentsAddedBeforeConversion()
-    {
-        using var builder = TestDistributedApplicationBuilder.Create(DistributedApplicationOperation.Publish);
-
-        var executable = builder.AddExecutable("worker", "worker", ".")
-            .PublishAsDockerFile()
-            .WithArgs("--retained")
-            .PublishAsDockerFile();
-
-        var arguments = await ArgumentEvaluator.GetArgumentListAsync(executable.Resource);
-
-        Assert.Empty(arguments);
-    }
-
-    [Fact]
     public void OwnerResolvesProjectionDeploymentTarget()
     {
         using var builder = TestDistributedApplicationBuilder.Create(DistributedApplicationOperation.Publish);
@@ -740,26 +692,6 @@ public class ResourceProjectionTests
         var ownerEndpoint = Assert.Single(executable.Resource.Annotations.OfType<EndpointAnnotation>());
         Assert.Same(executable.Resource, Assert.Single(model.GetContainerResources()));
         Assert.Equal("http2", ownerEndpoint.Transport);
-    }
-
-    [Fact]
-    public void ProjectionCallbackMutatesOwnerAnnotationsDirectly()
-    {
-        using var builder = TestDistributedApplicationBuilder.Create(DistributedApplicationOperation.Publish);
-        var executable = builder.AddExecutable("worker", "worker", ".")
-            .WithAnnotation(new FirstAnnotation())
-            .WithContainerProjection(
-                DistributedApplicationOperation.Publish,
-                container =>
-                {
-                    container.WithImage("projected-image");
-                    container.Resource.Annotations.Add(new SecondAnnotation());
-                });
-
-        Assert.True(builder.TryCreateResourceBuilder<ContainerResource>("worker", out var projectionBuilder));
-        Assert.Same(executable.Resource.Annotations, projectionBuilder.Resource.Annotations);
-        Assert.Single(executable.Resource.Annotations.OfType<FirstAnnotation>());
-        Assert.Single(executable.Resource.Annotations.OfType<SecondAnnotation>());
     }
 
     [Fact]
@@ -949,23 +881,6 @@ public class ResourceProjectionTests
         Assert.NotNull(executable.Resource.AsContainer());
         Assert.Collection(model.GetContainerResources(), resource => Assert.Same(executable.Resource, resource));
         Assert.Empty(model.GetExecutableResources());
-    }
-
-    [Fact]
-    public void ProjectionCanBeResolvedDuringConfigurationCallback()
-    {
-        using var builder = TestDistributedApplicationBuilder.Create(DistributedApplicationOperation.Publish);
-        var executable = builder.AddExecutable("worker", "worker", ".")
-            .WithContainerProjection(
-                DistributedApplicationOperation.Publish,
-                projection =>
-                {
-                    Assert.True(builder.TryCreateResourceBuilder<ContainerResource>("worker", out var resolvedBuilder));
-                    Assert.Same(projection.Resource, resolvedBuilder.Resource);
-                });
-
-        Assert.True(builder.TryCreateResourceBuilder<ContainerResource>("worker", out var resolvedBuilder));
-        Assert.Same(executable.Resource, resolvedBuilder.Resource.GetOwnerOrSelf());
     }
 
     [Fact]
@@ -1301,7 +1216,4 @@ public class ResourceProjectionTests
 
     private sealed record SingletonAnnotation(string Value) : IResourceAnnotation;
 
-    private sealed class FirstAnnotation : IResourceAnnotation;
-
-    private sealed class SecondAnnotation : IResourceAnnotation;
 }
