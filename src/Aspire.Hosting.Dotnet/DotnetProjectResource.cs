@@ -62,9 +62,9 @@ public class DotnetProjectResource : ExecutableResource, IResourceWithServiceDis
         // Ensure uniform C# project defaults, including the Rebuild command and Kestrel endpoint wiring.
         Annotations.Add(new ProjectLaunchDefaultsAnnotation());
 
-        // PublishAsDockerFile now keeps the DotnetProjectResource as the canonical model member, so its fallback
-        // callback remains in the shared annotation collection. Delegate to the selected projection when present;
-        // otherwise keep rejecting accidental executable-manifest publishing.
+        // When PublishAsDockerFile selects a container projection, the DotnetProjectResource remains the canonical
+        // model member and its fallback callback remains in the shared annotation collection. Delegate to the
+        // selected projection when present; otherwise keep rejecting accidental executable-manifest publishing.
         _unsupportedPublishCallback = new ManifestPublishingCallbackAnnotation(context =>
             this.AsContainer() is { } container
                 ? context.WriteContainerAsync(container)
