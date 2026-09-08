@@ -227,6 +227,49 @@ public class DcpExecutorTests(ITestOutputHelper outputHelper)
         Assert.Null(container.Spec.Build!.Platform);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RunAsContainerImageReplacesDockerfileBuildSpec(bool callbackAddsDockerfile)
+    {
+        using var tempDockerfileContext = await DockerfileUtils.CreateTemporaryDockerfileAsync(outputHelper);
+        var builder = DistributedApplication.CreateBuilder();
+        var owner = builder.AddExecutable("worker", "worker", ".")
+            .RunAsContainerImage("contoso/worker:1.0", container => container.WithDockerfile(
+                tempDockerfileContext.ContextPath, tempDockerfileContext.DockerfilePath, stage: "old"))
+            .RunAsContainerImage("contoso/worker:2.0", container =>
+            {
+                if (callbackAddsDockerfile)
+                {
+                    container.WithDockerfile(
+                        tempDockerfileContext.ContextPath, tempDockerfileContext.DockerfilePath, stage: "new");
+                }
+            });
+        var kubernetesService = new TestKubernetesService();
+        using var app = builder.Build();
+        var model = app.Services.GetRequiredService<DistributedApplicationModel>();
+        var appExecutor = CreateAppExecutor(model, kubernetesService: kubernetesService);
+
+        await appExecutor.RunApplicationAsync();
+
+        var container = Assert.Single(kubernetesService.CreatedResources.OfType<Container>());
+        Assert.Equal(owner.Resource.Name, container.AppModelResourceName);
+        Assert.Empty(kubernetesService.CreatedResources.OfType<Executable>());
+        if (callbackAddsDockerfile)
+        {
+            var dockerfile = Assert.Single(owner.Resource.Annotations.OfType<DockerfileBuildAnnotation>());
+            Assert.Equal($"{dockerfile.ImageName}:{dockerfile.ImageTag}", container.Spec.Image);
+            Assert.NotNull(container.Spec.Build);
+            Assert.Equal("new", container.Spec.Build.Stage);
+            Assert.Equal(tempDockerfileContext.DockerfilePath, container.Spec.Build.Dockerfile);
+        }
+        else
+        {
+            Assert.Equal("contoso/worker:2.0", container.Spec.Image);
+            Assert.Null(container.Spec.Build);
+        }
+    }
+
     [Fact]
     public async Task ResourceStarted_ProjectHasReplicas_EventRaisedOnce()
     {

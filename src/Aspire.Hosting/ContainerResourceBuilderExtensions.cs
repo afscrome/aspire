@@ -1938,6 +1938,14 @@ public static class ContainerResourceBuilderExtensions
             digestValue = digest[prefix.Length..];
         }
 
+        // Selecting a prebuilt image replaces an earlier Dockerfile source on the reused projection.
+        // Otherwise DCP still builds the Dockerfile. The projection callback runs afterward and may
+        // explicitly select a new Dockerfile source.
+        foreach (var dockerfile in container.Resource.Annotations.OfType<DockerfileBuildAnnotation>().ToArray())
+        {
+            container.Resource.Annotations.Remove(dockerfile);
+        }
+
         // Mutate the annotation already present rather than adding a second one, matching how WithImage records an
         // image. Tag and SHA256 are mutually exclusive and each setter clears the other, so exactly one is assigned:
         // writing both would clear whichever was set second.

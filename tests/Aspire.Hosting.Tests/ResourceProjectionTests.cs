@@ -1066,6 +1066,62 @@ public class ResourceProjectionTests
         Assert.Null(image.SHA256);
     }
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void RunAsContainerImageReplacesDockerfileSourceBeforeCallback(bool customProjection, bool callbackAddsDockerfile)
+    {
+        using var builder = TestDistributedApplicationBuilder.Create(DistributedApplicationOperation.Run);
+        var owner = builder.AddResource(new PlainOwnerResource("worker"));
+
+        void ApplyProjection(string image, Action<IResourceBuilder<ContainerResource>> configure)
+        {
+            if (customProjection)
+            {
+                owner.RunAsContainerImage<PlainOwnerResource, ConnectionStringOnlyProjection>(image, configure);
+            }
+            else
+            {
+                owner.RunAsContainerImage(image, configure);
+            }
+        }
+
+        ApplyProjection("contoso/worker:1.0", container => container
+            .WithDockerfile(".", stage: "old")
+            .WithBuildArg("OLD", "value"));
+        var originalProjection = owner.Resource.AsContainer();
+        Assert.NotNull(originalProjection);
+        Assert.Single(owner.Resource.Annotations.OfType<DockerfileBuildAnnotation>());
+
+        ApplyProjection("contoso/worker:2.0", container =>
+        {
+            Assert.Empty(container.Resource.Annotations.OfType<DockerfileBuildAnnotation>());
+            if (callbackAddsDockerfile)
+            {
+                container.WithDockerfile(".", stage: "new");
+            }
+        });
+
+        Assert.Same(originalProjection, owner.Resource.AsContainer());
+        Assert.Same(owner.Resource, Assert.Single(builder.Resources));
+        var image = Assert.Single(owner.Resource.Annotations.OfType<ContainerImageAnnotation>());
+        Assert.Equal("contoso/worker", image.Image);
+        Assert.Equal("2.0", image.Tag);
+        Assert.Equal(callbackAddsDockerfile, owner.Resource.RequiresImageBuild());
+        if (callbackAddsDockerfile)
+        {
+            var dockerfile = Assert.Single(owner.Resource.Annotations.OfType<DockerfileBuildAnnotation>());
+            Assert.Equal("new", dockerfile.Stage);
+            Assert.Empty(dockerfile.BuildArguments);
+        }
+        else
+        {
+            Assert.Empty(owner.Resource.Annotations.OfType<DockerfileBuildAnnotation>());
+        }
+    }
+
     [Fact]
     public void ReprojectingWithADigestClearsATagFromTheEarlierImage()
     {

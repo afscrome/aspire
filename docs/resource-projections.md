@@ -31,6 +31,11 @@ configuration callbacks receive separate container wrappers. Projections make
 the distinction explicit and provide a supported way to resolve registered
 projections back to their owners.
 
+Calling `RunAsContainerImage` again replaces the previous image and clears any
+earlier Dockerfile build source on the projection. Its callback runs afterward,
+so calling `WithDockerfile` inside that callback explicitly selects a new build
+source instead of the prebuilt image.
+
 ## Writing identity-sensitive extensions
 
 Use `GetOwnerOrSelf()` when maintaining resource-keyed dictionaries, storing
