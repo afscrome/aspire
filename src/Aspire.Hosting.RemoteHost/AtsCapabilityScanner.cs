@@ -2672,7 +2672,8 @@ public static class AtsCapabilityScanner
         var underlyingType = Nullable.GetUnderlyingType(type);
         if (underlyingType != null)
         {
-            return CreateTypeRef(underlyingType, enumCollector, assemblyExportedTypeCache);
+            var typeRef = CreateTypeRef(underlyingType, enumCollector, assemblyExportedTypeCache);
+            return typeRef is null ? null : WithNullability(typeRef, type, NullabilityState.Nullable);
         }
 
         // Handle primitives
@@ -2969,9 +2970,9 @@ public static class AtsCapabilityScanner
         // GetInterfaces() returns all interfaces including inherited ones
         foreach (var iface in type.GetInterfaces())
         {
-            // Skip interfaces that are not visible outside the defining assembly (e.g. internal
-            // implementation abstractions like IProjectLaunchDefaultsResource). They are not part of
-            // the public API surface, so they must not leak into the generated language bindings.
+            // Skip interfaces that are not visible outside the defining assembly (internal
+            // implementation abstractions). They are not part of the public API surface, so they must
+            // not leak into the generated language bindings.
             // GetInterfaces() returns the flattened set, so any public interfaces an internal one
             // extends are still collected directly here and the type's public contract is preserved.
             if (!iface.IsVisible)

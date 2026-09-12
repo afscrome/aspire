@@ -213,11 +213,9 @@ public class ResourceCommandTests(ITestOutputHelper outputHelper)
         };
         var monitor = new TestAuxiliaryBackchannelMonitor();
         monitor.AddConnection(
-            "hash1",
             Path.Combine(workspace.WorkspaceRoot.FullName, "socket1"),
             new TestAppHostAuxiliaryBackchannel { AppHostInfo = appHostInfo });
         monitor.AddConnection(
-            "hash2",
             Path.Combine(workspace.WorkspaceRoot.FullName, "socket2"),
             new TestAppHostAuxiliaryBackchannel { AppHostInfo = appHostInfo });
         var services = CliTestHelper.CreateServiceCollection(workspace, outputHelper, options =>
@@ -530,7 +528,7 @@ public class ResourceCommandTests(ITestOutputHelper outputHelper)
             ]
         };
         var monitor = new TestAuxiliaryBackchannelMonitor();
-        monitor.AddConnection("hash", "/tmp/test.sock", backchannel);
+        monitor.AddConnection("/tmp/test.sock", backchannel);
 
         var services = CliTestHelper.CreateServiceCollection(workspace, outputHelper, options =>
         {
@@ -557,7 +555,7 @@ public class ResourceCommandTests(ITestOutputHelper outputHelper)
             ExecuteResourceCommandResult = new ExecuteResourceCommandResponse { Success = true }
         };
         var monitor = new TestAuxiliaryBackchannelMonitor();
-        monitor.AddConnection("hash", "/tmp/test.sock", backchannel);
+        monitor.AddConnection("/tmp/test.sock", backchannel);
 
         var services = CliTestHelper.CreateServiceCollection(workspace, outputHelper, options =>
         {
@@ -594,7 +592,7 @@ public class ResourceCommandTests(ITestOutputHelper outputHelper)
             ]
         };
         var monitor = new TestAuxiliaryBackchannelMonitor();
-        monitor.AddConnection("hash", "/tmp/test.sock", backchannel);
+        monitor.AddConnection("/tmp/test.sock", backchannel);
 
         var services = CliTestHelper.CreateServiceCollection(workspace, outputHelper, options =>
         {
@@ -629,7 +627,7 @@ public class ResourceCommandTests(ITestOutputHelper outputHelper)
             ]
         };
         var monitor = new TestAuxiliaryBackchannelMonitor();
-        monitor.AddConnection("hash", "/tmp/test.sock", backchannel);
+        monitor.AddConnection("/tmp/test.sock", backchannel);
 
         var services = CliTestHelper.CreateServiceCollection(workspace, outputHelper, options =>
         {
@@ -667,7 +665,7 @@ public class ResourceCommandTests(ITestOutputHelper outputHelper)
             ]
         };
         var monitor = new TestAuxiliaryBackchannelMonitor();
-        monitor.AddConnection("hash", "/tmp/test.sock", backchannel);
+        monitor.AddConnection("/tmp/test.sock", backchannel);
 
         var services = CliTestHelper.CreateServiceCollection(workspace, outputHelper, options =>
         {
@@ -700,7 +698,7 @@ public class ResourceCommandTests(ITestOutputHelper outputHelper)
             ]
         };
         var monitor = new TestAuxiliaryBackchannelMonitor();
-        monitor.AddConnection("hash", "/tmp/test.sock", backchannel);
+        monitor.AddConnection("/tmp/test.sock", backchannel);
 
         var services = CliTestHelper.CreateServiceCollection(workspace, outputHelper, options =>
         {
@@ -727,7 +725,7 @@ public class ResourceCommandTests(ITestOutputHelper outputHelper)
             ExecuteResourceCommandResult = new ExecuteResourceCommandResponse { Success = true }
         };
         var monitor = new TestAuxiliaryBackchannelMonitor();
-        monitor.AddConnection("hash", "/tmp/test.sock", backchannel);
+        monitor.AddConnection("/tmp/test.sock", backchannel);
 
         var services = CliTestHelper.CreateServiceCollection(workspace, outputHelper, options =>
         {
@@ -754,7 +752,7 @@ public class ResourceCommandTests(ITestOutputHelper outputHelper)
             ExecuteResourceCommandResult = new ExecuteResourceCommandResponse { Success = true }
         };
         var monitor = new TestAuxiliaryBackchannelMonitor();
-        monitor.AddConnection("hash", "/tmp/test.sock", backchannel);
+        monitor.AddConnection("/tmp/test.sock", backchannel);
 
         var services = CliTestHelper.CreateServiceCollection(workspace, outputHelper, options =>
         {
@@ -781,7 +779,7 @@ public class ResourceCommandTests(ITestOutputHelper outputHelper)
             ExecuteResourceCommandResult = new ExecuteResourceCommandResponse { Success = true }
         };
         var monitor = new TestAuxiliaryBackchannelMonitor();
-        monitor.AddConnection("hash", "/tmp/test.sock", backchannel);
+        monitor.AddConnection("/tmp/test.sock", backchannel);
 
         var services = CliTestHelper.CreateServiceCollection(workspace, outputHelper, options =>
         {
@@ -808,7 +806,7 @@ public class ResourceCommandTests(ITestOutputHelper outputHelper)
             ExecuteResourceCommandResult = new ExecuteResourceCommandResponse { Success = true }
         };
         var monitor = new TestAuxiliaryBackchannelMonitor();
-        monitor.AddConnection("hash", "/tmp/test.sock", backchannel);
+        monitor.AddConnection("/tmp/test.sock", backchannel);
 
         var services = CliTestHelper.CreateServiceCollection(workspace, outputHelper, options =>
         {
@@ -864,7 +862,7 @@ public class ResourceCommandTests(ITestOutputHelper outputHelper)
             ]
         };
         var monitor = new TestAuxiliaryBackchannelMonitor();
-        monitor.AddConnection("hash", "/tmp/test.sock", backchannel);
+        monitor.AddConnection("/tmp/test.sock", backchannel);
 
         var services = CliTestHelper.CreateServiceCollection(workspace, outputHelper, options =>
         {
@@ -928,7 +926,7 @@ public class ResourceCommandTests(ITestOutputHelper outputHelper)
             ]
         };
         var monitor = new TestAuxiliaryBackchannelMonitor();
-        monitor.AddConnection("hash", "/tmp/test.sock", backchannel);
+        monitor.AddConnection("/tmp/test.sock", backchannel);
 
         var services = CliTestHelper.CreateServiceCollection(workspace, outputHelper, options =>
         {
@@ -1507,7 +1505,7 @@ public class ResourceCommandTests(ITestOutputHelper outputHelper)
             ]
         };
         var monitor = new TestAuxiliaryBackchannelMonitor();
-        monitor.AddConnection("hash", "/tmp/test.sock", backchannel);
+        monitor.AddConnection("/tmp/test.sock", backchannel);
 
         var services = CliTestHelper.CreateServiceCollection(workspace, outputHelper, options =>
         {
@@ -1543,7 +1541,7 @@ public class ResourceCommandTests(ITestOutputHelper outputHelper)
             ]
         };
         var monitor = new TestAuxiliaryBackchannelMonitor();
-        monitor.AddConnection("hash", "/tmp/test.sock", backchannel);
+        monitor.AddConnection("/tmp/test.sock", backchannel);
 
         var services = CliTestHelper.CreateServiceCollection(workspace, outputHelper, options =>
         {
@@ -1578,7 +1576,7 @@ public class ResourceCommandTests(ITestOutputHelper outputHelper)
             ]
         };
         var monitor = new TestAuxiliaryBackchannelMonitor();
-        monitor.AddConnection("hash", "/tmp/test.sock", backchannel);
+        monitor.AddConnection("/tmp/test.sock", backchannel);
 
         var services = CliTestHelper.CreateServiceCollection(workspace, outputHelper, options =>
         {
@@ -1730,7 +1728,7 @@ public class ResourceCommandTests(ITestOutputHelper outputHelper)
             ]
         };
         var monitor = new TestAuxiliaryBackchannelMonitor();
-        monitor.AddConnection("hash", "/tmp/test.sock", backchannel);
+        monitor.AddConnection("/tmp/test.sock", backchannel);
 
         var services = CliTestHelper.CreateServiceCollection(workspace, outputHelper, options =>
         {
@@ -1967,7 +1965,7 @@ public class ResourceCommandTests(ITestOutputHelper outputHelper)
             ]
         };
         var monitor = new TestAuxiliaryBackchannelMonitor();
-        monitor.AddConnection("hash", "/tmp/test.sock", backchannel);
+        monitor.AddConnection("/tmp/test.sock", backchannel);
 
         var services = CliTestHelper.CreateServiceCollection(workspace, outputHelper, options =>
         {
@@ -2023,7 +2021,7 @@ public class ResourceCommandTests(ITestOutputHelper outputHelper)
             ]
         };
         var monitor = new TestAuxiliaryBackchannelMonitor();
-        monitor.AddConnection("hash", "/tmp/test.sock", backchannel);
+        monitor.AddConnection("/tmp/test.sock", backchannel);
 
         var services = CliTestHelper.CreateServiceCollection(workspace, outputHelper, options =>
         {
@@ -2125,7 +2123,7 @@ public class ResourceCommandTests(ITestOutputHelper outputHelper)
             ]
         };
         var monitor = new TestAuxiliaryBackchannelMonitor();
-        monitor.AddConnection("hash", "/tmp/test.sock", backchannel);
+        monitor.AddConnection("/tmp/test.sock", backchannel);
 
         var services = CliTestHelper.CreateServiceCollection(workspace, outputHelper, options =>
         {
@@ -2290,7 +2288,7 @@ public class ResourceCommandTests(ITestOutputHelper outputHelper)
             ]
         };
         var monitor = new TestAuxiliaryBackchannelMonitor();
-        monitor.AddConnection("hash", "/tmp/test.sock", backchannel);
+        monitor.AddConnection("/tmp/test.sock", backchannel);
 
         var services = CliTestHelper.CreateServiceCollection(workspace, outputHelper, options =>
         {
@@ -2352,7 +2350,7 @@ public class ResourceCommandTests(ITestOutputHelper outputHelper)
         TestInteractionService? interactionService = null)
     {
         var monitor = new TestAuxiliaryBackchannelMonitor();
-        monitor.AddConnection("hash", "/tmp/test.sock", backchannel);
+        monitor.AddConnection("/tmp/test.sock", backchannel);
 
         var services = CliTestHelper.CreateServiceCollection(workspace, outputHelper, options =>
         {

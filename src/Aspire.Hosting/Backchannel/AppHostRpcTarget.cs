@@ -21,7 +21,7 @@ internal class AppHostRpcTarget(
     PipelineActivityReporter activityReporter,
     IHostApplicationLifetime lifetime,
     AppHostStartupState startupState,
-    IFileUploadStore fileUploadStore,
+    IInteractionFileUploadStore fileUploadStore,
     IConfiguration configuration)
 {
     private readonly CancellationTokenSource _shutdownCts = new();
@@ -221,7 +221,8 @@ internal class AppHostRpcTarget(
         _ = cancellationToken;
         return Task.FromResult(new string[] {
             "baseline.v2",
-            "pipeline-steps.v1"
+            "pipeline-steps.v1",
+            "pipeline-steps.v2"
             });
     }
 #pragma warning restore CA1822
@@ -249,7 +250,16 @@ internal class AppHostRpcTarget(
             throw new InvalidOperationException($"File '{request.FileName}' exceeds the maximum upload size of {maxUploadSize} bytes.");
         }
 
-        var (fileId, filePath) = fileUploadStore.CreateEntry(request.FileName);
+        if (request.InteractionId <= 0)
+        {
+            throw new InvalidOperationException("An interaction ID is required when uploading a file.");
+        }
+        if (string.IsNullOrEmpty(request.InputName))
+        {
+            throw new InvalidOperationException("An input name is required when uploading a file.");
+        }
+
+        var (fileId, filePath) = fileUploadStore.CreateEntry(request.FileName, request.InteractionId, request.InputName);
 
         try
         {
@@ -261,9 +271,11 @@ internal class AppHostRpcTarget(
         }
         catch
         {
-            fileUploadStore.RemoveEntry(fileId);
+            fileUploadStore.RemoveEntry(request.InteractionId, fileId);
             throw;
         }
+
+        fileUploadStore.CompleteUpload(request.InteractionId, fileId);
 
         return new UploadFileResponse { FileId = fileId };
     }

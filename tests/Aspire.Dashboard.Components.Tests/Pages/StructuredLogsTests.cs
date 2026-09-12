@@ -1,9 +1,12 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using Aspire.Dashboard.Components.Controls;
+using Aspire.Dashboard.Components.Controls.Grid;
 using Aspire.Dashboard.Components.Pages;
 using Aspire.Dashboard.Components.Resize;
 using Aspire.Dashboard.Components.Tests.Shared;
+using Aspire.Dashboard.Configuration;
 using Aspire.Dashboard.Extensions;
 using Aspire.Dashboard.Model;
 using Aspire.Dashboard.Model.Otlp;
@@ -17,6 +20,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using Microsoft.FluentUI.AspNetCore.Components;
 using OpenTelemetry.Proto.Logs.V1;
 using Xunit;
 using static Aspire.Tests.Shared.Telemetry.TelemetryTestHelpers;
@@ -27,13 +32,13 @@ namespace Aspire.Dashboard.Components.Tests.Pages;
 public partial class StructuredLogsTests : DashboardTestContext
 {
     [Fact]
-    public void Render_ResourceInstanceHasDashes_AppKeyResolvedCorrectly()
+    public async Task Render_ResourceInstanceHasDashes_AppKeyResolvedCorrectly()
     {
         // Arrange
         SetupStructureLogsServices();
 
-        var telemetryRepository = Services.GetRequiredService<TelemetryRepository>();
-        telemetryRepository.AddLogs(new AddContext(), new RepeatedField<ResourceLogs>
+        var telemetryRepository = Services.GetRequiredService<SqliteTelemetryRepository>();
+        await telemetryRepository.AddLogsAsync(new AddContext(), new RepeatedField<ResourceLogs>
         {
             new ResourceLogs
             {
@@ -69,7 +74,7 @@ public partial class StructuredLogsTests : DashboardTestContext
         });
 
         // Assert
-        var viewModel = Services.GetRequiredService<StructuredLogsViewModel>();
+        var viewModel = cut.Instance.ViewModel;
 
         Assert.NotNull(viewModel.ResourceKey);
         Assert.Equal("TestApp", viewModel.ResourceKey.Value.Name);
@@ -98,7 +103,7 @@ public partial class StructuredLogsTests : DashboardTestContext
         });
 
         // Assert
-        var viewModel = Services.GetRequiredService<StructuredLogsViewModel>();
+        var viewModel = cut.Instance.ViewModel;
 
         Assert.Collection(viewModel.Filters,
             f =>
@@ -138,7 +143,7 @@ public partial class StructuredLogsTests : DashboardTestContext
         });
 
         // Assert
-        var viewModel = Services.GetRequiredService<StructuredLogsViewModel>();
+        var viewModel = cut.Instance.ViewModel;
 
         Assert.Collection(viewModel.Filters,
             f =>
@@ -176,7 +181,7 @@ public partial class StructuredLogsTests : DashboardTestContext
         });
 
         // Assert
-        var viewModel = Services.GetRequiredService<StructuredLogsViewModel>();
+        var viewModel = cut.Instance.ViewModel;
 
         Assert.Collection(viewModel.Filters,
             f =>
@@ -230,6 +235,85 @@ public partial class StructuredLogsTests : DashboardTestContext
         });
     }
 
+    [Fact]
+    public void Render_FilterDisablesBrowserAutocomplete()
+    {
+        SetupStructureLogsServices();
+
+        var viewport = new ViewportInformation(IsDesktop: true, IsUltraLowHeight: false, IsUltraLowWidth: false);
+
+        var dimensionManager = Services.GetRequiredService<DimensionManager>();
+        dimensionManager.InvokeOnViewportInformationChanged(viewport);
+
+        var cut = RenderComponent<StructuredLogs>(builder =>
+        {
+            builder.Add(p => p.ViewportInformation, viewport);
+        });
+
+        var search = Assert.Single(cut.FindComponents<FluentTextInput>());
+        Assert.Equal("off", search.Instance.AutoComplete);
+    }
+
+    [Fact]
+    public void PauseIncomingData_DisplaysPauseWarningImmediately()
+    {
+        SetupStructureLogsServices();
+
+        var viewport = new ViewportInformation(IsDesktop: true, IsUltraLowHeight: false, IsUltraLowWidth: false);
+
+        var dimensionManager = Services.GetRequiredService<DimensionManager>();
+        dimensionManager.InvokeOnViewportInformationChanged(viewport);
+
+        var cut = RenderComponent<StructuredLogs>(builder =>
+        {
+            builder.Add(p => p.ViewportInformation, viewport);
+        });
+
+        cut.FindComponent<PauseIncomingDataSwitch>().WaitForElement("fluent-button").Click();
+
+        // The click handler flows through PauseManager and then re-renders the page, so the pause state and the
+        // warning banner do not both land in the same render pass. Waiting avoids asserting on an interim render.
+        cut.WaitForAssertion(() =>
+        {
+            Assert.True(Services.GetRequiredService<PauseManager>().AreStructuredLogsPaused(out _));
+            Assert.Contains("Capture paused", cut.Markup);
+        });
+    }
+
+    [Theory]
+    [InlineData(false, 1)]
+    [InlineData(true, 0)]
+    public async Task Render_AtLogLimit_LimitMessageOnlyDisplayedForLiveRun(bool isReadOnly, int expectedMessageCount)
+    {
+        SetupStructureLogsServices();
+        Services.AddSingleton<IOptions<DashboardOptions>>(Options.Create(new DashboardOptions
+        {
+            TelemetryLimits = { MaxLogCount = 1 }
+        }));
+        await FluentUISetupHelpers.ConfigureTelemetryRepository(this, isReadOnly, telemetryRepository => telemetryRepository.AddLogsAsync(new AddContext(), new RepeatedField<ResourceLogs>
+        {
+            new ResourceLogs
+            {
+                Resource = CreateResource(),
+                ScopeLogs =
+                {
+                    new ScopeLogs
+                    {
+                        Scope = CreateScope(),
+                        LogRecords = { CreateLogRecord() }
+                    }
+                }
+            }
+        }));
+        var viewport = new ViewportInformation(IsDesktop: true, IsUltraLowHeight: false, IsUltraLowWidth: false);
+        Services.GetRequiredService<DimensionManager>().InvokeOnViewportInformationChanged(viewport);
+        var cut = FluentUISetupHelpers.RenderMessageBarProviderWithPage<StructuredLogs>(this, viewport);
+
+        var grid = cut.FindComponent<AspireFluentDataGrid<LogSummary>>();
+        await grid.InvokeAsync(grid.Instance.RefreshDataAndRenderAsync);
+        cut.WaitForAssertion(() => Assert.Equal(expectedMessageCount, cut.FindComponents<DashboardMessageBar>().Count));
+    }
+
     private void SetupStructureLogsServices()
     {
         FluentUISetupHelpers.SetupFluentDivider(this);
@@ -247,6 +331,6 @@ public partial class StructuredLogsTests : DashboardTestContext
 
         FluentUISetupHelpers.AddCommonDashboardServices(this);
         Services.AddSingleton<ILogger<StructuredLogs>>(NullLogger<StructuredLogs>.Instance);
-        Services.AddSingleton<StructuredLogsViewModel>();
+        Services.AddTransient<StructuredLogsViewModel>();
     }
 }

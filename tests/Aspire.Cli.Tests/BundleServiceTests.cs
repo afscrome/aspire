@@ -117,7 +117,7 @@ public class BundleServiceTests(ITestOutputHelper outputHelper)
     }
 
     [Fact]
-    public void IsVersionedLayoutValid_RequiresManagedExecutableAndDcpDirectory()
+    public void IsVersionedLayoutValid_RequiresManagedExecutableAndDcpExecutable()
     {
         using var workspace = TemporaryWorkspace.CreateForCli(outputHelper);
         var dir = workspace.WorkspaceRoot.FullName;
@@ -147,6 +147,46 @@ public class BundleServiceTests(ITestOutputHelper outputHelper)
 
         Directory.Delete(Path.Combine(dir, BundleDiscovery.DcpDirectoryName), recursive: true);
         Assert.False(BundleService.IsVersionedLayoutValid(dir));
+    }
+
+    [Fact]
+    public void IsVersionedLayoutValid_RequiresDcpExecutable()
+    {
+        using var workspace = TemporaryWorkspace.CreateForCli(outputHelper);
+        var dir = workspace.WorkspaceRoot.FullName;
+        CreateFakeBundleLayout(dir);
+
+        File.Delete(BundleDiscovery.GetDcpExecutablePath(Path.Combine(dir, BundleDiscovery.DcpDirectoryName)));
+
+        Assert.False(BundleService.IsVersionedLayoutValid(dir));
+    }
+
+    [Theory]
+    [InlineData(unchecked((int)0x80070005), true)] // ERROR_ACCESS_DENIED
+    [InlineData(unchecked((int)0x80070020), true)] // ERROR_SHARING_VIOLATION
+    [InlineData(unchecked((int)0x80070021), true)] // ERROR_LOCK_VIOLATION
+    [InlineData(unchecked((int)0x80070027), false)] // ERROR_HANDLE_DISK_FULL
+    [InlineData(unchecked((int)0x80070070), false)] // ERROR_DISK_FULL
+    [InlineData(unchecked((int)0x800700B7), false)] // ERROR_ALREADY_EXISTS
+    public void IsRetryableDirectoryMoveException_OnlyRetriesTransientWindowsLockErrors(int hresult, bool expected)
+    {
+        var exception = new IOException("Directory move failed.", hresult);
+
+        Assert.Equal(expected, BundleService.IsRetryableDirectoryMoveException(exception, isWindows: true));
+    }
+
+    [Fact]
+    public void IsRetryableDirectoryMoveException_RetriesUnauthorizedAccess()
+    {
+        Assert.True(BundleService.IsRetryableDirectoryMoveException(new UnauthorizedAccessException(), isWindows: true));
+    }
+
+    [Fact]
+    public void IsRetryableDirectoryMoveException_DoesNotRetryOnNonWindows()
+    {
+        var exception = new IOException("Directory move failed.", unchecked((int)0x80070020));
+
+        Assert.False(BundleService.IsRetryableDirectoryMoveException(exception, isWindows: false));
     }
 
     [Fact]
@@ -196,6 +236,6 @@ public class BundleServiceTests(ITestOutputHelper outputHelper)
 
         var dcpDir = Path.Combine(root, BundleDiscovery.DcpDirectoryName);
         Directory.CreateDirectory(dcpDir);
-        File.WriteAllText(Path.Combine(dcpDir, "placeholder"), "dcp");
+        File.WriteAllText(BundleDiscovery.GetDcpExecutablePath(dcpDir), "dcp");
     }
 }

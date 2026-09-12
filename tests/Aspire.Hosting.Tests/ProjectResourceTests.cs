@@ -222,6 +222,27 @@ public class ProjectResourceTests(ITestOutputHelper outputHelper)
     }
 
     [Theory]
+    [InlineData("aspire-dashboard", false)]
+    [InlineData("projectName", true)]
+    public async Task AddProjectAddsOtlpExporterEnvironmentVariablesBasedOnResourceName(string resourceName, bool expectedOtlpExporter)
+    {
+        var appBuilder = CreateBuilder(args: ["--environment", "Development", $"{KnownConfigNames.DashboardOtlpGrpcEndpointUrl}=http://localhost:18889"],
+            DistributedApplicationOperation.Run);
+
+        appBuilder.AddProject<TestProject>(resourceName, launchProfileName: null);
+        using var app = appBuilder.Build();
+
+        var appModel = app.Services.GetRequiredService<DistributedApplicationModel>();
+        var resource = Assert.Single(appModel.GetProjectResources());
+
+        Assert.Equal(expectedOtlpExporter, resource.Annotations.OfType<OtlpExporterAnnotation>().Any());
+
+        var config = await EnvironmentVariableEvaluator.GetEnvironmentVariablesAsync(resource, DistributedApplicationOperation.Run, TestServiceProvider.Instance).DefaultTimeout();
+
+        Assert.Equal(expectedOtlpExporter, config.ContainsKey(KnownOtelConfigNames.ExporterOtlpEndpoint));
+    }
+
+    [Theory]
     [InlineData("true", false)]
     [InlineData("1", false)]
     [InlineData("false", true)]
@@ -990,6 +1011,28 @@ public class ProjectResourceTests(ITestOutputHelper outputHelper)
         Assert.Same(NameValidationPolicyAnnotation.None, policy);
     }
 
+    [Fact]
+    public void GetProjectMetadataThrowsWhenSeveralAnnotationsArePresent()
+    {
+        var resource = new ProjectResource("projectName");
+        resource.Annotations.Add(new TestProject());
+        resource.Annotations.Add(new OverrideTestProject());
+
+        var exception = Assert.Throws<InvalidOperationException>(resource.GetProjectMetadata);
+        Assert.Contains("projectName", exception.Message);
+        Assert.Contains("more than one", exception.Message);
+    }
+
+    [Fact]
+    public void GetProjectMetadataThrowsWhenTheResourceHasNoProjectMetadata()
+    {
+        var resource = new ProjectResource("projectName");
+
+        var exception = Assert.Throws<InvalidOperationException>(resource.GetProjectMetadata);
+        Assert.Contains("projectName", exception.Message);
+        Assert.Contains(nameof(IProjectMetadata), exception.Message);
+    }
+
     internal static IDistributedApplicationBuilder CreateBuilder(string[]? args = null, DistributedApplicationOperation operation = DistributedApplicationOperation.Publish)
     {
         var resolvedArgs = new List<string>();
@@ -1013,6 +1056,11 @@ public class ProjectResourceTests(ITestOutputHelper outputHelper)
         public string ProjectPath => "another-path";
 
         public LaunchSettings? LaunchSettings { get; set; }
+    }
+
+    private sealed class OverrideTestProject : IProjectMetadata
+    {
+        public string ProjectPath => "override-path";
     }
 
     internal abstract class BaseProjectWithProfileAndConfig : IProjectMetadata

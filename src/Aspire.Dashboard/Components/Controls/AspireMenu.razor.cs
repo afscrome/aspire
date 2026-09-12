@@ -11,7 +11,19 @@ namespace Aspire.Dashboard.Components;
 
 public partial class AspireMenu : FluentComponentBase
 {
+    public AspireMenu(LibraryConfiguration configuration)
+        : base(configuration)
+    {
+    }
+
     private FluentMenu? _menu;
+    private IReadOnlyList<MenuButtonItem>? _renderedItems;
+    private bool _refreshMenuAfterRender;
+    private bool? _appliedOpen;
+    private int _cursorLeft;
+    private int _cursorTop;
+
+    private string? HeaderId => Items.FirstOrDefault(item => item.IsHeader)?.Id;
 
     [Parameter]
     public string? Anchor { get; set; }
@@ -22,14 +34,17 @@ public partial class AspireMenu : FluentComponentBase
     [Parameter]
     public bool Anchored { get; set; } = true;
 
-    [Parameter]
-    public int? VerticalThreshold { get; set; }
-
     /// <summary>
     /// Raised when the <see cref="Open"/> property changed.
     /// </summary>
     [Parameter]
     public EventCallback<bool> OpenChanged { get; set; }
+
+    /// <summary>
+    /// Raised after a menu item's secondary action completes so the owner can regenerate the menu items.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnSecondaryActionComplete { get; set; }
 
     [Parameter]
     public required IReadOnlyList<MenuButtonItem> Items { get; set; }
@@ -47,90 +62,138 @@ public partial class AspireMenu : FluentComponentBase
     [Inject]
     public required IJSRuntime JS { get; init; }
 
-    // Each menu item is approximately 32px tall, plus 16px padding for the menu container.
-    private const int EstimatedItemHeight = 32;
-    private const int MenuVerticalPadding = 16;
+    private string? CursorAnchorStyle => new StyleBuilder()
+        .AddStyle("position", "fixed")
+        .AddStyle("left", $"{_cursorLeft}px")
+        .AddStyle("top", $"{_cursorTop}px")
+        .AddStyle("width", "0")
+        .AddStyle("height", "0")
+        .AddStyle("anchor-name", $"--anchor-{Anchor}")
+        .AddStyle("pointer-events", "none")
+        .Build();
 
-    private int CalculatedVerticalThreshold => VerticalThreshold ?? (Items.Count * EstimatedItemHeight + MenuVerticalPadding);
-
-    public async Task CloseAsync()
+    protected override void OnParametersSet()
     {
-        if (_menu is { } menu)
+        if (!ReferenceEquals(_renderedItems, Items))
         {
-            await menu.CloseAsync();
+            _renderedItems = Items;
+            _refreshMenuAfterRender = Open;
+        }
+
+        if (_appliedOpen != Open)
+        {
+            _refreshMenuAfterRender = true;
         }
     }
 
-    public async Task OpenAsync(int screenWidth, int screenHeight, int clientX, int clientY)
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (_menu is { } menu)
+        if (_refreshMenuAfterRender)
         {
-            // Calculate the position to display the context menu using the cursor position (clientX, clientY)
-            // together with the screen width and height.
-            // The menu may need to be displayed above or left of the cursor to fit in the screen.
-            var left = 0;
-            var right = 0;
-            var top = 0;
-            var bottom = 0;
+            _refreshMenuAfterRender = false;
 
-            if (clientX + menu.HorizontalThreshold > screenWidth)
+            if (_menu is not null)
             {
-                right = screenWidth - clientX;
-            }
-            else
-            {
-                left = clientX;
-            }
+                if (Open)
+                {
+                    // Trigger identifies either the button anchor or the cursor anchor. The parameterless
+                    // path leaves placement to Fluent's CSS anchor positioning and viewport fallbacks.
+                    await _menu.OpenMenuAsync();
+                }
+                else
+                {
+                    await _menu.CloseMenuAsync();
+                }
 
-            if (clientY + CalculatedVerticalThreshold > screenHeight)
-            {
-                bottom = screenHeight - clientY;
+                _appliedOpen = Open;
             }
-            else
-            {
-                top = clientY;
-            }
+        }
+    }
 
-            // Overwrite the style. We don't want to add new position values each time the menu is opened.
+    public async Task CloseAsync()
+    {
+        await SetOpenAsync(false);
+    }
+
+    public async Task OpenAsync(int clientX, int clientY)
+    {
+        if (_menu is not null)
+        {
+            _cursorLeft = clientX;
+            _cursorTop = clientY;
+
             Style = new StyleBuilder()
-                .AddStyle("left", $"{left}px", left != 0)
-                .AddStyle("right", $"{right}px", right != 0)
-                .AddStyle("top", $"{top}px", top != 0)
-                .AddStyle("bottom", $"{bottom}px", bottom != 0)
-                // Width values come from fluentui-blazor stylesheet; max-width uses an app CSS variable so nested submenus stay in sync.
-                // Explicitly set to override min-width: fit-content applied by library to some menus.
-                .AddStyle("max-width", "var(--aspire-menu-max-width)")
+                .AddStyle("max-width", "368px")
                 .AddStyle("min-width", "64px")
                 .Build();
 
+            // Escape and light-dismiss can close the browser popover without raising OpenedChanged.
+            // Treat every cursor request as a new open/position request even when Open is still true.
+            _refreshMenuAfterRender = true;
             await SetOpenAsync(true);
 
             StateHasChanged();
         }
     }
 
-    private async Task HandleItemClicked(MenuButtonItem item)
+    private Task HandleItemClicked(MenuButtonItem item)
     {
-        if (item.OnClick is {} onClick)
-        {
-            await onClick();
-        }
+        return item.Role is MenuItemRole.Checkbox or MenuItemRole.Radio
+            ? Task.CompletedTask
+            : HandleItemActivatedAsync(item);
+    }
+
+    private Task HandleItemCheckedChanged(MenuButtonItem item, bool? isChecked)
+    {
+        return isChecked is true && item.Role is MenuItemRole.Checkbox or MenuItemRole.Radio
+            ? HandleItemActivatedAsync(item)
+            : Task.CompletedTask;
+    }
+
+    private async Task HandleItemActivatedAsync(MenuButtonItem item)
+    {
         await SetOpenAsync(false);
 
         if (RestoreFocusOnItemClick && !string.IsNullOrEmpty(Anchor))
         {
             await JS.InvokeVoidAsync("focusElement", Anchor);
         }
+
+        // Item callbacks can move focus to a dialog or another control, so restore the
+        // menu trigger first to avoid stealing focus back after the callback completes.
+        if (item.OnClick is { } onClick)
+        {
+            await onClick();
+        }
+    }
+
+    private async Task HandleSecondaryActionClicked(MenuButtonItem item)
+    {
+        if (item.OnSecondaryActionClick is { } onSecondaryActionClick)
+        {
+            await onSecondaryActionClick();
+        }
+
+        if (OnSecondaryActionComplete.HasDelegate)
+        {
+            await OnSecondaryActionComplete.InvokeAsync();
+        }
+        else
+        {
+            StateHasChanged();
+        }
     }
 
     private async Task OnOpenChanged(bool open)
     {
+        _appliedOpen = open;
         await SetOpenAsync(open);
     }
 
     private async Task SetOpenAsync(bool open)
     {
         Open = open;
+        StateHasChanged();
 
         if (OpenChanged.HasDelegate)
         {

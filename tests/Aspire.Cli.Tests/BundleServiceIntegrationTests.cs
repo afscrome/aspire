@@ -197,6 +197,51 @@ public class BundleServiceIntegrationTests(ITestOutputHelper outputHelper)
     }
 
     [Fact]
+    public async Task ExtractAsync_PayloadWithoutDcpExecutableFailsVerification()
+    {
+        using var workspace = TemporaryWorkspace.CreateForCli(outputHelper);
+        var layoutRoot = workspace.WorkspaceRoot.FullName;
+        var payload = CreateFakeBundlePayload(includeDcpExecutable: false);
+        var service = CreateService(
+            new TestBundlePayloadProvider(payload),
+            new TestLayoutDiscovery(layoutRoot));
+
+        var result = await service.ExtractAsync(layoutRoot, force: true);
+
+        Assert.Equal(BundleExtractResult.ExtractionFailed, result);
+        Assert.False(Directory.Exists(Path.Combine(layoutRoot, BundleDiscovery.BundleDirectoryName)));
+    }
+
+    [Fact]
+    [SkipOnPlatform(TestPlatforms.Linux | TestPlatforms.OSX | TestPlatforms.FreeBSD, "Windows file sharing semantics are required.")]
+    public async Task MoveDirectoryWithRetryAsync_FileTemporarilyLocked_RetriesUntilReleased()
+    {
+        using var workspace = TemporaryWorkspace.CreateForCli(outputHelper);
+        var sourcePath = workspace.CreateDirectory("source").FullName;
+        var destinationPath = Path.Combine(workspace.WorkspaceRoot.FullName, "destination");
+        var lockedFilePath = Path.Combine(sourcePath, "locked.dll");
+        File.WriteAllText(lockedFilePath, "locked");
+
+        var service = CreateService(
+            new TestBundlePayloadProvider(CreateFakeBundlePayload()),
+            new TestLayoutDiscovery(workspace.WorkspaceRoot.FullName));
+
+        using var lockedFile = new FileStream(lockedFilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        var moveTask = service.MoveDirectoryWithRetryAsync(
+            sourcePath,
+            destinationPath,
+            TestContext.Current.CancellationToken);
+
+        Assert.False(moveTask.IsCompleted);
+
+        lockedFile.Dispose();
+        await moveTask;
+
+        Assert.False(Directory.Exists(sourcePath));
+        Assert.True(Directory.Exists(destinationPath));
+    }
+
+    [Fact]
     public async Task EnsureExtractedAndAcquireLayoutAsync_ReturnsVersionRootedLayoutAndSkipsLeasedCleanup()
     {
         using var workspace = TemporaryWorkspace.CreateForCli(outputHelper);
@@ -276,6 +321,39 @@ public class BundleServiceIntegrationTests(ITestOutputHelper outputHelper)
         BundleService.TryCleanupStaleVersions(versionsDir, activeVersionId: "active-version");
 
         Assert.False(Directory.Exists(staleVersionDir));
+    }
+
+    [Fact]
+    public void TryCleanupStaleVersions_LeavesVersionWhenLeaseDirectoryCannotBeEnumerated()
+    {
+        if (OperatingSystem.IsWindows() || Environment.IsPrivilegedProcess)
+        {
+            Assert.Skip("Requires a non-privileged process on a platform with Unix file modes.");
+            return;
+        }
+
+        using var workspace = TemporaryWorkspace.CreateForCli(outputHelper);
+        var versionsDir = Path.Combine(workspace.WorkspaceRoot.FullName, BundleService.VersionsDirectoryName);
+        var staleVersionDir = Path.Combine(versionsDir, "stale-version");
+        var leasesDir = Path.Combine(staleVersionDir, BundleVersionLease.LeasesDirectoryName);
+        Directory.CreateDirectory(leasesDir);
+        File.WriteAllText(Path.Combine(leasesDir, "unknown.lease"), "{}");
+        var originalMode = File.GetUnixFileMode(leasesDir);
+
+        try
+        {
+            File.SetUnixFileMode(leasesDir, UnixFileMode.None);
+
+            BundleService.TryCleanupStaleVersions(versionsDir, activeVersionId: "active-version");
+
+            Assert.True(Directory.Exists(staleVersionDir));
+        }
+        finally
+        {
+            File.SetUnixFileMode(
+                leasesDir,
+                originalMode | UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
     }
 
     [Fact]
@@ -499,7 +577,7 @@ public class BundleServiceIntegrationTests(ITestOutputHelper outputHelper)
     /// Creates a tar.gz byte array containing a fake bundle layout with the
     /// required wrapper directory for strip-components=1 extraction.
     /// </summary>
-    internal static byte[] CreateFakeBundlePayload(string contentMarker = "fake-bundle")
+    internal static byte[] CreateFakeBundlePayload(string contentMarker = "fake-bundle", bool includeDcpExecutable = true)
     {
         using var ms = new MemoryStream();
 
@@ -519,14 +597,19 @@ public class BundleServiceIntegrationTests(ITestOutputHelper outputHelper)
             };
             tar.WriteEntry(managedEntry);
 
-            // dcp/ directory with a placeholder file.
+            // dcp/ directory and platform executable.
             tar.WriteEntry(new PaxTarEntry(TarEntryType.Directory, $"aspire-payload/{BundleDiscovery.DcpDirectoryName}/"));
 
-            var dcpEntry = new PaxTarEntry(TarEntryType.RegularFile, $"aspire-payload/{BundleDiscovery.DcpDirectoryName}/dcp-placeholder")
+            if (includeDcpExecutable)
             {
-                DataStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes($"dcp-{contentMarker}\n"))
-            };
-            tar.WriteEntry(dcpEntry);
+                var dcpEntry = new PaxTarEntry(
+                    TarEntryType.RegularFile,
+                    $"aspire-payload/{BundleDiscovery.DcpDirectoryName}/{BundleDiscovery.GetDcpExecutableName()}")
+                {
+                    DataStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes($"dcp-{contentMarker}\n"))
+                };
+                tar.WriteEntry(dcpEntry);
+            }
         }
 
         return ms.ToArray();
@@ -579,8 +662,9 @@ public class BundleServiceIntegrationTests(ITestOutputHelper outputHelper)
             var dcpDir = Path.Combine(bundleDir, BundleDiscovery.DcpDirectoryName);
             var managedExeName = BundleDiscovery.GetExecutableFileName(BundleDiscovery.ManagedExecutableName);
             var managedExe = Path.Combine(managedDir, managedExeName);
+            var dcpExe = BundleDiscovery.GetDcpExecutablePath(dcpDir);
 
-            if (!Directory.Exists(managedDir) || !File.Exists(managedExe) || !Directory.Exists(dcpDir))
+            if (!Directory.Exists(managedDir) || !File.Exists(managedExe) || !Directory.Exists(dcpDir) || !File.Exists(dcpExe))
             {
                 return null;
             }

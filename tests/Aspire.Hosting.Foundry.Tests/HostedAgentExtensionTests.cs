@@ -451,7 +451,7 @@ public class HostedAgentExtensionTests
         };
 
         builder.AddPythonApp("agent", "./app.py", "main:app")
-            .AsHostedAgentForExport(project, HostedAgentProtocol.Invocations, "1.0.0", options);
+            .AsHostedAgentWithProtocolForExport(project, HostedAgentProtocol.Invocations, "1.0.0", options);
 
         builder.Build();
 
@@ -468,6 +468,42 @@ public class HostedAgentExtensionTests
         var protocol = Assert.Single(configuration.ProtocolVersions);
         Assert.Equal(ProjectsAgentProtocol.Invocations, protocol.Protocol);
         Assert.Equal("1.0.0", protocol.Version);
+    }
+
+    [Fact]
+    public void AsHostedAgentForExport_WithOptions_UsesDefaultResponsesProtocolAndAppliesOptions()
+    {
+        using var builder = TestDistributedApplicationBuilder.Create(DistributedApplicationOperation.Publish);
+        var project = builder.AddFoundry("account")
+            .AddProject("my-project");
+
+        var options = new HostedAgentOptions
+        {
+            Description = "test description",
+            Cpu = 1m,
+            Memory = 2m,
+            Metadata = { ["scenario"] = "unit-test" },
+            EnvironmentVariables = { ["MY_VAR"] = "my-value" }
+        };
+
+        builder.AddPythonApp("agent", "./app.py", "main:app")
+            .AsHostedAgentForExport(project, options);
+
+        builder.Build();
+
+        var hostedAgent = Assert.Single(builder.Resources.OfType<AzureHostedAgentResource>());
+
+        var configuration = new HostedAgentConfiguration("test-image");
+        hostedAgent.Configure!(configuration);
+
+        Assert.Equal("test description", configuration.Description);
+        Assert.Equal(1m, configuration.Cpu);
+        Assert.Equal(2m, configuration.Memory);
+        Assert.Equal("unit-test", configuration.Metadata["scenario"]);
+        Assert.Equal("my-value", configuration.EnvironmentVariables["MY_VAR"]);
+        var protocol = Assert.Single(configuration.ProtocolVersions);
+        Assert.Equal(ProjectsAgentProtocol.Responses, protocol.Protocol);
+        Assert.Equal(AzureHostedAgentResource.DefaultResponsesProtocolVersion, protocol.Version);
     }
 
     [Fact]
@@ -571,7 +607,7 @@ public class HostedAgentExtensionTests
             .AddProject("my-project");
 
         builder.AddPythonApp("agent", "./app.py", "main:app")
-            .AsHostedAgentForExport(project, HostedAgentProtocol.Responses, "2.0.0", options: null);
+            .AsHostedAgentWithProtocolForExport(project, HostedAgentProtocol.Responses, "2.0.0", options: null);
 
         builder.Build();
 
@@ -590,7 +626,7 @@ public class HostedAgentExtensionTests
         using var builder = TestDistributedApplicationBuilder.Create(DistributedApplicationOperation.Publish);
         var app = builder.AddPythonApp("agent", "./app.py", "main:app");
 
-        Assert.Throws<ArgumentNullException>(() => app.AsHostedAgentForExport(project: null!, HostedAgentProtocol.Responses, "2.0.0"));
+        Assert.Throws<ArgumentNullException>(() => app.AsHostedAgentForExport(project: null!));
     }
 
     [Fact]
@@ -684,7 +720,7 @@ public class HostedAgentExtensionTests
     }
 
     [Fact]
-    public void AsHostedAgent_StampsReferenceRoleAssignmentAnnotationOnTarget_WithAzureAIUserRole()
+    public void AsHostedAgent_StampsReferenceRoleAssignmentAnnotationOnTarget_WithFoundryUserRole()
     {
         using var builder = TestDistributedApplicationBuilder.Create(DistributedApplicationOperation.Publish);
         var project = builder.AddFoundry("account")
@@ -700,12 +736,12 @@ public class HostedAgentExtensionTests
         var annotation = Assert.Single(hostedAgent.Target.Annotations.OfType<ReferenceRoleAssignmentAnnotation>());
         Assert.Same(account, annotation.Target);
         Assert.Contains(annotation.Roles, role =>
-            string.Equals(role.Id, AzureHostedAgentResource.AzureAIUserRoleDefinitionId, StringComparison.OrdinalIgnoreCase));
+            string.Equals(role.Id, FoundryResource.FoundryUserRoleDefinitionId, StringComparison.OrdinalIgnoreCase));
 #pragma warning restore ASPIREAZURE003
     }
 
     [Fact]
-    public void AsHostedAgent_ReferenceRoleAssignmentAnnotation_GrantsOnlyAzureAIUserRole()
+    public void AsHostedAgent_ReferenceRoleAssignmentAnnotation_GrantsOnlyFoundryUserRole()
     {
         using var builder = TestDistributedApplicationBuilder.Create(DistributedApplicationOperation.Publish);
         var project = builder.AddFoundry("account")
@@ -721,9 +757,9 @@ public class HostedAgentExtensionTests
 #pragma warning disable ASPIREAZURE003 // Type is for evaluation purposes only and is subject to change or removal in future updates.
         var annotation = Assert.Single(hostedAgent.Target.Annotations.OfType<ReferenceRoleAssignmentAnnotation>());
 
-        // The implied grant is least-privilege: only "Azure AI User" is required to invoke the agent.
+        // The implied grant is least-privilege: only "Foundry User" is required to invoke the agent.
         var role = Assert.Single(annotation.Roles);
-        Assert.Equal(AzureHostedAgentResource.AzureAIUserRoleDefinitionId, role.Id, ignoreCase: true);
+        Assert.Equal(FoundryResource.FoundryUserRoleDefinitionId, role.Id, ignoreCase: true);
 
         // The account's default data-plane roles must NOT be folded in here. A consumer that references
         // the account directly still receives them via the preparer's normal walk, and a consumer that

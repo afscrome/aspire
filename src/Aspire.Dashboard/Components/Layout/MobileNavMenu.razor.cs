@@ -20,6 +20,27 @@ public partial class MobileNavMenu : ComponentBase, IAsyncDisposable
     private bool _keyboardNavigationInitializing;
     private bool _disposed;
 
+    [Parameter, EditorRequired]
+    public required bool IsNavMenuOpen { get; set; }
+
+    [Parameter, EditorRequired]
+    public required Action CloseNavMenu { get; set; }
+
+    [Parameter, EditorRequired]
+    public required Func<Task> LaunchHelpAsync { get; set; }
+
+    [Parameter, EditorRequired]
+    public required Func<Task> LaunchAIAgentsAsync { get; set; }
+
+    [Parameter, EditorRequired]
+    public required bool IsAgentHelpEnabled { get; set; }
+
+    [Parameter, EditorRequired]
+    public required Func<Task> LaunchNotificationsAsync { get; set; }
+
+    [Parameter, EditorRequired]
+    public required Func<Task> LaunchSettingsAsync { get; set; }
+
     [Inject]
     public required NavigationManager NavigationManager { get; init; }
 
@@ -30,7 +51,7 @@ public partial class MobileNavMenu : ComponentBase, IAsyncDisposable
     public required IStringLocalizer<Resources.Layout> Loc { get; init; }
 
     [Inject]
-    public required IStringLocalizer<Resources.AIAssistant> AIAssistantLoc { get; init; }
+    public required IStringLocalizer<Resources.StructuredLogs> StructuredLogsLoc { get; init; }
 
     [Inject]
     public required IJSRuntime JS { get; init; }
@@ -137,7 +158,7 @@ public partial class MobileNavMenu : ComponentBase, IAsyncDisposable
         }
 
         yield return new MobileNavMenuEntry(
-            Loc[nameof(Resources.Layout.NavMenuStructuredLogsTab)],
+            StructuredLogsLoc[nameof(Resources.StructuredLogs.StructuredLogsHeader)],
             () => NavigateToAsync(DashboardUrls.StructuredLogsUrl()),
             DesktopNavMenu.StructuredLogsIcon(),
             ActiveIcon: DesktopNavMenu.StructuredLogsIcon(active: true),
@@ -181,15 +202,6 @@ public partial class MobileNavMenu : ComponentBase, IAsyncDisposable
                 Loc[nameof(Resources.Layout.MainLayoutLaunchAIAgents)],
                 LaunchAIAgentsAsync,
                 new Icons.Regular.Size24.BotSparkle()
-            );
-        }
-
-        if (IsAIEnabled)
-        {
-            yield return new MobileNavMenuEntry(
-                AIAssistantLoc[nameof(Resources.AIAssistant.AIAssistantLaunchButtonText)],
-                LaunchAIAssistantAsync,
-                new AspireIcons.Size24.GitHubCopilot()
             );
         }
 

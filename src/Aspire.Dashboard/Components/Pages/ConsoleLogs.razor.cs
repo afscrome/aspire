@@ -10,7 +10,6 @@ using Aspire.Dashboard.Components.Layout;
 using Aspire.Dashboard.Configuration;
 using Aspire.Dashboard.Extensions;
 using Aspire.Dashboard.Model;
-using Aspire.Dashboard.Model.Assistant;
 using Aspire.Dashboard.Model.Otlp;
 using Aspire.Shared.ConsoleLogs;
 using Aspire.Dashboard.Otlp.Storage;
@@ -22,6 +21,7 @@ using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Options;
 using Microsoft.JSInterop;
 using Icons = Microsoft.FluentUI.AspNetCore.Components.Icons;
+using MenuItemRole = Microsoft.FluentUI.AspNetCore.Components.MenuItemRole;
 
 namespace Aspire.Dashboard.Components.Pages;
 
@@ -82,7 +82,9 @@ public sealed partial class ConsoleLogs : ComponentBase, IComponentWithTelemetry
     public required ISessionStorage SessionStorage { get; init; }
 
     [Inject]
-    public required TelemetryRepository TelemetryRepository { get; init; }
+    public required DashboardDataSource DataSource { get; init; }
+
+    public ITelemetryRepository TelemetryRepository => DataSource.TelemetryRepository;
 
     [Inject]
     public required ILogger<ConsoleLogs> Logger { get; init; }
@@ -92,12 +94,6 @@ public sealed partial class ConsoleLogs : ComponentBase, IComponentWithTelemetry
 
     [Inject]
     public required IStringLocalizer<Dashboard.Resources.Resources> ResourcesLoc { get; init; }
-
-    [Inject]
-    public required IStringLocalizer<Dashboard.Resources.AIAssistant> AIAssistantLoc { get; init; }
-
-    [Inject]
-    public required IStringLocalizer<Dashboard.Resources.AIPrompts> AIPromptsLoc { get; init; }
 
     [Inject]
     public required IStringLocalizer<ControlsStrings> ControlsStringsLoc { get; init; }
@@ -113,9 +109,6 @@ public sealed partial class ConsoleLogs : ComponentBase, IComponentWithTelemetry
 
     [Inject]
     public required BrowserTimeProvider TimeProvider { get; init; }
-
-    [Inject]
-    public required IAIContextProvider AIContextProvider { get; init; }
 
     [Inject]
     public required PauseManager PauseManager { get; init; }
@@ -160,7 +153,6 @@ public sealed partial class ConsoleLogs : ComponentBase, IComponentWithTelemetry
     private readonly object _updateLogsLock = new object();
     private CancellationTokenSource? _showNoLogsMessageCts;
     private Task? _showNoLogsMessageDelayTask;
-    private AIContext? _aiContext;
     private LogViewer? _logViewerRef;
     private Controls.TerminalView? _terminalViewRef;
     private bool _selectedResourceHasTerminal;
@@ -173,11 +165,18 @@ public sealed partial class ConsoleLogs : ComponentBase, IComponentWithTelemetry
     // and TerminalView in MainSection (both stay mounted so flipping does
     // not tear down the PTY or the log subscription) and uses CSS to hide
     // the inactive one. For non-terminal resources only LogViewer is shown
-    // and this field is unused. The view is purely user-controlled — the
-    // page defaults to Console on resource selection and only changes via
-    // the ⋯ menu picker. There is no auto-switching in either direction:
-    // hosting messages (WaitFor, startup failures, stop/exit output) stay
-    // visible on Console until the user explicitly clicks Terminal.
+    // and this field is unused.
+    //
+    // The default is chosen once per resource selection (see SubscribeAsync):
+    // a live (Running) terminal resource defaults to Terminal because its PTY
+    // is the surface the user came for, while every other case (non-terminal,
+    // or a terminal resource that isn't live yet or has already exited)
+    // defaults to Console so pre-PTY hosting messages (WaitFor, startup
+    // failures) and post-PTY exit output stay visible. After that initial
+    // default there is no state-driven auto-switching: later refreshes such
+    // as a filter/clear change (which also route through SubscribeAsync)
+    // preserve the current view, and the user can flip either way via the
+    // ⋯ menu picker.
     private ConsoleLogsView _activeView = ConsoleLogsView.Console;
     // Tracks the view that was rendered to the DOM on the previous render
     // pass. When the active view flips back to Terminal we need to nudge
@@ -198,6 +197,7 @@ public sealed partial class ConsoleLogs : ComponentBase, IComponentWithTelemetry
     private bool _isTimestampUtc;
     private bool _noWrapLogs;
     private bool _showNoLogsMessage;
+    private bool _consoleLogsWereLoaded = true;
     private string _logFilter = string.Empty;
     public ConsoleLogsViewModel PageViewModel { get; set; } = null!;
     private IDisposable? _consoleLogsFiltersChangedSubscription;
@@ -209,10 +209,9 @@ public sealed partial class ConsoleLogs : ComponentBase, IComponentWithTelemetry
     {
         TelemetryContextProvider.Initialize(TelemetryContext);
         _resourceSubscriptionToken = _resourceSubscriptionCts.Token;
-        _logEntries = new(Options.Value.Frontend.MaxConsoleLogCount);
+        _logEntries = new(DashboardUIHelpers.GetVirtualizedItemCount(Options.Value.Frontend.MaxConsoleLogCount));
         _allResource = new() { Id = null, Name = ControlsStringsLoc[nameof(ControlsStrings.LabelAll)] };
         PageViewModel = new ConsoleLogsViewModel { SelectedResource = _allResource, Status = Loc[nameof(Dashboard.Resources.ConsoleLogs.ConsoleLogsLoadingResources)] };
-        _aiContext = CreateAIContext();
         _logEntryChannelReaderTask = StartLogEntryChannelReaderTask();
 
         _consoleLogsFiltersChangedSubscription = ConsoleLogsManager.OnFiltersChanged(async () =>
@@ -220,7 +219,10 @@ public sealed partial class ConsoleLogs : ComponentBase, IComponentWithTelemetry
             var isAllSelected = IsAllSelected();
             var selectedResourceName = PageViewModel.SelectedResource.Id?.InstanceId;
 
-            await SubscribeAsync(isAllSelected, selectedResourceName);
+            // A filter change (e.g. clearing the console logs) is not a resource
+            // selection change, so preserve the user's current view instead of
+            // snapping back to the default.
+            await SubscribeAsync(isAllSelected, selectedResourceName, resetView: false);
         });
 
         var consoleSettingsResult = await LocalStorage.GetUnprotectedAsync<ConsoleLogConsoleSettings>(BrowserStorageKeys.ConsoleLogConsoleSettings);
@@ -266,7 +268,7 @@ public sealed partial class ConsoleLogs : ComponentBase, IComponentWithTelemetry
                 return;
             }
 
-            var (snapshot, subscription) = await DashboardClient.SubscribeResourcesAsync(_resourceSubscriptionToken);
+            var (snapshot, subscription) = await DataSource.ResourceRepository.SubscribeResourcesAsync(_resourceSubscriptionToken);
 
             Logger.LogDebug("Received initial resource snapshot with {ResourceCount} resources.", snapshot.Length);
 
@@ -316,7 +318,7 @@ public sealed partial class ConsoleLogs : ComponentBase, IComponentWithTelemetry
                         // (selected resource modified, or resources added/removed). Frequent property
                         // updates on non-selected resources (health checks, state transitions) don't
                         // require a full page re-render. Avoiding unnecessary re-renders prevents
-                        // FluentSearch's ImmediateDelay input buffer from being clobbered by stale
+                        // FluentTextInput's ImmediateDelay input buffer from being clobbered by stale
                         // parameter values pushed during the debounce window.
                         if (changeType == ResourceViewModelChangeType.Delete ||
                             isNewResource ||
@@ -450,7 +452,7 @@ public sealed partial class ConsoleLogs : ComponentBase, IComponentWithTelemetry
 
         if (needsNewSubscription)
         {
-            await SubscribeAsync(isAllSelected, selectedResourceName);
+            await SubscribeAsync(isAllSelected, selectedResourceName, resetView: true);
         }
 
         UpdateTelemetryProperties();
@@ -489,10 +491,9 @@ public sealed partial class ConsoleLogs : ComponentBase, IComponentWithTelemetry
         _lastRenderedView = _activeView;
     }
 
-    private async Task SubscribeAsync(bool isAllSelected, string? selectedResourceName)
+    private async Task SubscribeAsync(bool isAllSelected, string? selectedResourceName, bool resetView)
     {
         Logger.LogDebug("Subscription change needed. IsAllSelected: {IsAllSelected}, SelectedResource: {SelectedResource}", isAllSelected, selectedResourceName);
-        _aiContext?.ContextHasChanged();
 
         // Detect whether the selected resource has terminal support
         _selectedResourceHasTerminal = false;
@@ -502,13 +503,30 @@ public sealed partial class ConsoleLogs : ComponentBase, IComponentWithTelemetry
         // the wrong badge/dims/dropdown for the new resource while the JS
         // terminal is initializing and pushing its first snapshot.
         _terminalToolbarState = null;
-        // Default the view to Console on every resource change so pre-PTY
-        // hosting messages (WaitFor, startup failures) are visible immediately
-        // on selection. The user picks Terminal explicitly from the ⋯ menu.
-        _activeView = ConsoleLogsView.Console;
 
-        if (!isAllSelected && selectedResourceName is not null &&
-            _resourceByName.TryGetValue(selectedResourceName, out var selectedResource) &&
+        // Only (re)default the view on an actual resource-selection change.
+        // SubscribeAsync also runs on filter changes (clearing the console logs
+        // routes through ConsoleLogsManager.OnFiltersChanged), and those
+        // refreshes must preserve whatever view the user is currently on rather
+        // than snapping back to the default.
+        if (resetView)
+        {
+            // Default the view to Console on every resource change. A terminal-
+            // enabled resource that isn't live yet (Waiting/Starting) or has already
+            // stopped (Exited/Finished/FailedToStart) has no active PTY, so Console
+            // is where the useful output lives: pre-PTY hosting messages (WaitFor,
+            // startup failures) and post-PTY exit messages. When the resource is
+            // live (Running) the PTY is the primary surface, so we flip the default
+            // to Terminal below.
+            _activeView = ConsoleLogsView.Console;
+        }
+
+        var selectedResource = selectedResourceName is not null
+            ? _resourceByName.GetValueOrDefault(selectedResourceName)
+            : null;
+
+        if (!DashboardClient.IsReadOnly &&
+            !isAllSelected && selectedResource is not null &&
             selectedResource.HasTerminal() &&
             selectedResource.TryGetTerminalReplicaInfo(out var replicaIndex, out _))
         {
@@ -516,6 +534,19 @@ public sealed partial class ConsoleLogs : ComponentBase, IComponentWithTelemetry
             _terminalResourceName = selectedResource.DisplayName;
             _terminalReplicaIndex = replicaIndex;
             Logger.LogDebug("Resource '{ResourceName}' has terminal at replica {ReplicaIndex}", selectedResourceName, replicaIndex);
+
+            // When the resource is live (Running) its PTY is active, so make the
+            // terminal the default view on selection — that's the surface the
+            // user came for. Non-running terminal resources stay on Console so
+            // pre-PTY hosting messages and post-PTY exit output remain visible
+            // immediately. Gated on resetView so a filter refresh (e.g. clearing
+            // logs) never overrides a manual view choice. The user can still flip
+            // either way via the ⋯ menu.
+            if (resetView && selectedResource.IsRunningState())
+            {
+                _activeView = ConsoleLogsView.Terminal;
+            }
+
             // Intentionally fall through to the normal subscription path so
             // the resource's console log stream is collected even while the
             // user is on the Terminal view. The Console view in the View
@@ -536,6 +567,8 @@ public sealed partial class ConsoleLogs : ComponentBase, IComponentWithTelemetry
         }
         ResetNoLogsMessage();
 
+        _consoleLogsWereLoaded = !DashboardClient.IsReadOnly || WereConsoleLogsLoaded(isAllSelected, selectedResource);
+
         await InvokeAsync(_logViewerRef.SafeRefreshDataAsync);
 
         if (isAllSelected)
@@ -544,11 +577,11 @@ public sealed partial class ConsoleLogs : ComponentBase, IComponentWithTelemetry
             _isSubscribedToAll = true;
             await SubscribeToAllResourcesAsync();
         }
-        else if (selectedResourceName is not null && _resourceByName.TryGetValue(selectedResourceName, out var resource))
+        else if (selectedResource is not null)
         {
             // Subscribe to single resource
             _isSubscribedToAll = false;
-            await SubscribeToSingleResourceAsync(resource);
+            await SubscribeToSingleResourceAsync(selectedResource);
         }
         else
         {
@@ -569,6 +602,22 @@ public sealed partial class ConsoleLogs : ComponentBase, IComponentWithTelemetry
         UpdateMenuButtons();
     }
 
+    private bool WereConsoleLogsLoaded(bool isAllSelected, ResourceViewModel? selectedResource)
+    {
+        if (isAllSelected)
+        {
+            return _resourceByName.Values
+                .Where(resource => !resource.IsResourceHidden(_showHiddenResources))
+                .Any(resource => resource.ConsoleLogsLoaded);
+        }
+
+        return selectedResource?.ConsoleLogsLoaded == true;
+    }
+
+    private string GetNoLogsMessage() => _consoleLogsWereLoaded
+        ? Loc[nameof(Dashboard.Resources.ConsoleLogs.ConsoleLogsNoLogsFound)]
+        : Loc[nameof(Dashboard.Resources.ConsoleLogs.ConsoleLogsNotCapturedForRun)];
+
     private bool IsAllSelected()
     {
         return PageViewModel?.SelectedResource is not null && PageViewModel.SelectedResource == _allResource;
@@ -587,16 +636,27 @@ public sealed partial class ConsoleLogs : ComponentBase, IComponentWithTelemetry
         // no-terminal case.
         if (_selectedResourceHasTerminal)
         {
+            // Model the two view options as checkable menu items so the picker
+            // exposes the current selection to assistive technology, not just to
+            // sighted users. FluentMenuItem only emits role="menuitemcheckbox" and
+            // the reflected aria-checked state (which screen readers announce) when
+            // the item carries a checkable Role; a leading icon alone conveys the
+            // selection visually but is silent to a screen reader. The checkbox role
+            // also renders a checkmark indicator on the checked item.
             _logsMenuItems.Add(new()
             {
                 OnClick = () => HandleViewChangedAsync(nameof(ConsoleLogsView.Console)),
                 Text = Loc[nameof(Dashboard.Resources.ConsoleLogs.ConsoleLogsViewConsoleOption)],
+                Role = MenuItemRole.Checkbox,
+                Checked = _activeView == ConsoleLogsView.Console,
             });
 
             _logsMenuItems.Add(new()
             {
                 OnClick = () => HandleViewChangedAsync(nameof(ConsoleLogsView.Terminal)),
                 Text = Loc[nameof(Dashboard.Resources.ConsoleLogs.ConsoleLogsViewTerminalOption)],
+                Role = MenuItemRole.Checkbox,
+                Checked = _activeView == ConsoleLogsView.Terminal,
             });
 
             _logsMenuItems.Add(new()
@@ -1175,6 +1235,12 @@ public sealed partial class ConsoleLogs : ComponentBase, IComponentWithTelemetry
     private async Task ClearConsoleLogs(ResourceKey? key)
     {
         var now = TimeProvider.GetUtcNow().UtcDateTime;
+        var resourceNames = key is null
+            ? DataSource.ResourceRepository.GetResources().Select(resource => resource.Name).ToList()
+            : [key.Value.ToString()];
+
+        await DataSource.ResourceRepository.ClearConsoleLogsAsync(resourceNames, now);
+
         var newFilters = key is null
             ? ConsoleLogsFilters.CreateClearAll(now)
             : ConsoleLogsManager.Filters.WithResourceCleared(key.Value.ToString(), now);
@@ -1183,6 +1249,13 @@ public sealed partial class ConsoleLogs : ComponentBase, IComponentWithTelemetry
         // This makes remove behavior persistent which matches removing telemetry.
         await ConsoleLogsManager.UpdateFiltersAsync(newFilters);
     }
+
+    private string? PauseText => PauseManager.ConsoleLogPauseIntervals.LastOrDefault() is { End: null } pause
+        ? string.Format(
+            CultureInfo.CurrentCulture,
+            Loc[nameof(Dashboard.Resources.ConsoleLogs.PauseInProgressText)],
+            FormatHelpers.FormatTimeWithOptionalDate(TimeProvider, pause.Start))
+        : null;
 
     private void OnPausedChanged(bool isPaused)
     {
@@ -1226,7 +1299,6 @@ public sealed partial class ConsoleLogs : ComponentBase, IComponentWithTelemetry
 
     public async ValueTask DisposeAsync()
     {
-        _aiContext?.Dispose();
         ResetNoLogsMessage();
         _showNoLogsMessageCts?.Cancel();
         await TaskHelpers.WaitIgnoreCancelAsync(_showNoLogsMessageDelayTask);
@@ -1292,24 +1364,6 @@ public sealed partial class ConsoleLogs : ComponentBase, IComponentWithTelemetry
             ? GetResourceName(selectedResource)
             : null;
         return new ConsoleLogsPageState(selectedResourceName);
-    }
-
-    private AIContext CreateAIContext()
-    {
-        return AIContextProvider.AddNew(nameof(ConsoleLogs), c =>
-        {
-            c.BuildIceBreakers = (builder, context) =>
-            {
-                if (GetSelectedResource() is { } selectedResource)
-                {
-                    builder.ConsoleLogs(context, selectedResource);
-                }
-                else
-                {
-                    builder.ConsoleLogs(context);
-                }
-            };
-        });
     }
 
     // --- Terminal toolbar wiring -----------------------------------------
@@ -1399,6 +1453,13 @@ public sealed partial class ConsoleLogs : ComponentBase, IComponentWithTelemetry
     // by ConsoleLogsTests.
     internal ConsoleLogsView ActiveViewForTest => _activeView;
     internal Task HandleViewChangedForTestAsync(string? newView) => HandleViewChangedAsync(newView);
+    internal IReadOnlyList<MenuButtonItem> LogsMenuItemsForTest => _logsMenuItems;
+    // Lets a test wait for a background resource-subscription update (a state
+    // transition delivered via the resource channel) to actually be applied
+    // before asserting, so a "view is unchanged" assertion can't pass simply
+    // because the update hasn't been processed yet.
+    internal ResourceViewModel? GetResourceSnapshotForTest(string resourceName) =>
+        _resourceByName.TryGetValue(resourceName, out var resource) ? resource : null;
 
     private Task TerminalFontMinusAsync()
     {
