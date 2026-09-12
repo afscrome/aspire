@@ -73,8 +73,6 @@ namespace Aspire.Hosting.ApplicationModel
 
         public EndpointReference PrimaryEndpoint { get { throw null; } }
 
-        public bool TlsEnabled { get { throw null; } }
-
         public ReferenceExpression UriExpression { get { throw null; } }
 
         public ReferenceExpression UserNameReference { get { throw null; } }

@@ -45,11 +45,6 @@ public class SqlServerServerResource : ContainerResource, IResourceWithConnectio
     /// </summary>
     public ParameterResource PasswordParameter { get; private set; }
 
-    /// <summary>
-    /// Indicates whether TLS is enabled for the SQL Server.
-    /// </summary>
-    public bool TlsEnabled => PrimaryEndpoint.TlsEnabled;
-
     private ReferenceExpression BuildConnectionString()
     {
         var builder = new ReferenceExpressionBuilder();

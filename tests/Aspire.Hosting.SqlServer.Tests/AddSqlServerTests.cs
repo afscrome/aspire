@@ -301,7 +301,7 @@ public class AddSqlServerTests
 
         await builder.Eventing.PublishAsync(new BeforeStartEvent(app.Services, appModel));
 
-        Assert.True(sqlServer.Resource.TlsEnabled);
+        Assert.True(sqlServer.Resource.PrimaryEndpoint.TlsEnabled);
 
         var connectionString = await sqlServer.Resource.GetConnectionStringAsync(default);
         Assert.Equal("Server=127.0.0.1,1433;User ID=sa;Password=p@ssw0rd1;Encrypt=true", connectionString);
@@ -325,7 +325,7 @@ public class AddSqlServerTests
 
         await builder.Eventing.PublishAsync(new BeforeStartEvent(app.Services, appModel));
 
-        Assert.False(sqlServer.Resource.TlsEnabled);
+        Assert.False(sqlServer.Resource.PrimaryEndpoint.TlsEnabled);
 
         var connectionString = await sqlServer.Resource.GetConnectionStringAsync(default);
         Assert.Equal("Server=127.0.0.1,1433;User ID=sa;Password=p@ssw0rd1;TrustServerCertificate=true", connectionString);
@@ -403,7 +403,7 @@ public class AddSqlServerTests
 
         await builder.Eventing.PublishAsync(new BeforeStartEvent(app.Services, appModel));
 
-        Assert.False(sqlServer.Resource.TlsEnabled);
+        Assert.False(sqlServer.Resource.PrimaryEndpoint.TlsEnabled);
 
         var connectionString = await sqlServer.Resource.GetConnectionStringAsync(default);
         Assert.Equal("Server=127.0.0.1,1433;User ID=sa;Password=" + await sqlServer.Resource.PasswordParameter.GetValueAsync(default) + ";TrustServerCertificate=true", connectionString);
@@ -426,7 +426,7 @@ public class AddSqlServerTests
 
         await builder.Eventing.PublishAsync(new BeforeStartEvent(app.Services, appModel));
 
-        Assert.True(sqlServer.Resource.TlsEnabled);
+        Assert.True(sqlServer.Resource.PrimaryEndpoint.TlsEnabled);
 
         var connectionString = await sqlServer.Resource.GetConnectionStringAsync(default);
         Assert.Equal("Server=127.0.0.1,1433;User ID=sa;Password=" + await sqlServer.Resource.PasswordParameter.GetValueAsync(default) + ";Encrypt=true", connectionString);
