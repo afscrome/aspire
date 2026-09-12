@@ -210,7 +210,7 @@ internal sealed class ExecutableCreator(
                 throw new InvalidOperationException($"Project resource '{project.Name}' is missing required project metadata annotation, despite being returned from GetProjectAnnotatedResources().");
             }
 
-            EnsureRequiredAnnotations(project);
+            EnsureRequiredAnnotations(project, ProjectExecutableLaunchRecipe.Instance);
             var replicas = project.GetReplicaCount();
 
             for (var i = 0; i < replicas; i++)
@@ -239,7 +239,7 @@ internal sealed class ExecutableCreator(
                 throw new InvalidOperationException($"Executable resource '{resource.Name}' is missing required executable annotation, despite being returned from GetExecutableAnnotatedResources().");
             }
 
-            EnsureRequiredAnnotations(resource);
+            EnsureRequiredAnnotations(resource, DirectExecutableLaunchRecipe.Instance);
 
             var instance = DcpExecutor.GetDcpInstance(resource, instanceIndex: 0);
             var executable = Executable.Create(instance.Name, executableAnnotation.Command);
@@ -330,10 +330,19 @@ internal sealed class ExecutableCreator(
             int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out replicaIndex);
     }
 
-    private void EnsureRequiredAnnotations(IResource resource)
+    private void EnsureRequiredAnnotations(IResource resource, IExecutableLaunchRecipe defaultLaunchRecipe)
     {
         resource.AddLifeCycleCommands();
         _nameGenerator.EnsureDcpInstancesPopulated(resource);
+
+        // A resource classified as project/executable purely by annotation (rather than by deriving from
+        // ProjectResource/ExecutableResource, whose constructors add this) has no launch recipe yet. Substitution
+        // helpers (e.g. RunAsProject/RunAsTool) can attach a specific recipe themselves; fall back to the default
+        // recipe for the classification that routed the resource here so it can still produce a launch plan.
+        if (!resource.TryGetLastAnnotation<ExecutableLaunchRecipeAnnotation>(out _))
+        {
+            resource.Annotations.Add(new ExecutableLaunchRecipeAnnotation(defaultLaunchRecipe));
+        }
     }
 
     private void AddRenderedResource(IResource resource, Executable executable)
