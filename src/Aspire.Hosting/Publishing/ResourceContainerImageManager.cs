@@ -260,7 +260,7 @@ internal sealed class ResourceContainerImageManager(
             logger.LogDebug("{ContainerRuntimeName} is healthy", containerRuntime.Name);
         }
 
-        if (resource.TryGetProjectAnnotation(out _))
+        if (resource is ProjectResource)
         {
             // If it is a project resource we need to build the container image
             // using the .NET SDK.

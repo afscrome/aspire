@@ -1024,7 +1024,7 @@ public static class ResourceExtensions
             return false;
         }
 
-        return resource.TryGetProjectAnnotation(out _) || resource.TryGetLastAnnotation<DockerfileBuildAnnotation>(out _);
+        return resource is ProjectResource || resource.TryGetLastAnnotation<DockerfileBuildAnnotation>(out _);
     }
 
     /// <summary>
