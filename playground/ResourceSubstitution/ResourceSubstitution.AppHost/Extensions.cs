@@ -2,6 +2,7 @@
 #pragma warning disable ASPIRECERTIFICATES001 // Type is for evaluation purposes only and is subject to change or removal in future updates. Suppress this diagnostic to proceed.
 #pragma warning disable ASPIRECONTAINERRUNTIME001 // Type is for evaluation purposes only and is subject to change or removal in future updates. Suppress this diagnostic to proceed.
 #pragma warning disable ASPIREDOTNETTOOL // Type is for evaluation purposes only and is subject to change or removal in future updates. Suppress this diagnostic to proceed.
+#pragma warning disable ASPIREPROJECTS001 // WithProjectDefaults is experimental. Suppress this diagnostic to proceed.
 
 using Aspire.Hosting.Publishing;
 using Microsoft.Extensions.DependencyInjection;
@@ -161,7 +162,6 @@ public static class Extensions
         }
 
         TransmuteAnnotations();
-        FixEndpoints();
         return builder;
 
         void TransmuteAnnotations()
@@ -181,41 +181,11 @@ public static class Extensions
 
             builder.Resource.RemoveExecutableLaunchRecipeAnnotations();
 
-            // For now, create a dummy csharp app resource, then copy it's annotations to our new resource
-            //
-            // Exposing ProjectResourceBuilderExtensions.WithProjectDefaults may be a cleaner approach in the long run
-            // And making it usable on any `IResource`
-            var newProject = builder.ApplicationBuilder.AddCSharpApp($"temp-{Guid.NewGuid()}", projectPath);
-            builder.ApplicationBuilder.Resources.Remove(newProject.Resource);
-
-            // Removing the temp project above doesn't remove its "-rebuilder" companion (see RemoveRebuilderResource).
-            builder.ApplicationBuilder.RemoveRebuilderResource(newProject.Resource.Name);
-
-            // TODO: A clever merge approach may be needed here
-            foreach (var annotation in newProject.Resource.Annotations)
-            {
-                builder.Resource.Annotations.Add(annotation);
-            }
-        }
-
-        void FixEndpoints()
-        {
-            // The endpoint references on the temp project resource have a reference back to the temp resource
-            // Which will never become available.
-            // If using `WithProjectDefaults`, this should no longer not be necessary
-            builder.WithEnvironment(ctx =>
-            {
-                ctx.EnvironmentVariables.Remove("ASPNETCORE_URLS");
-
-                foreach (var endpointName in new[] { "http", "https" })
-                {
-                    var endpoint = builder.GetEndpoint(endpointName);
-                    if (endpoint.Exists)
-                    {
-                        ctx.EnvironmentVariables[$"ASPNETCORE_{endpointName.ToUpperInvariant()}_PORTS"] = endpoint.Property(EndpointProperty.TargetPort);
-                    }
-                }
-            });
+            // WithProjectDefaults wires up launch profile endpoints, OTel, and the rebuilder resource directly
+            // against this resource, so there's no need to build a throwaway project resource just to steal its
+            // annotations (and no dangling endpoint references back to a resource that's immediately discarded).
+            builder.WithAnnotation(new ResourceSubstitutionProjectMetadata(projectPath));
+            builder.WithProjectDefaults(new ProjectResourceOptions());
         }
     }
 
@@ -368,5 +338,10 @@ public static class Extensions
 
             await rns.PublishUpdateAsync(resource, x => x with { State = beforeWaitState });
         });
+    }
+
+    private sealed class ResourceSubstitutionProjectMetadata(string projectPath) : IProjectMetadata
+    {
+        public string ProjectPath { get; } = projectPath;
     }
 }
