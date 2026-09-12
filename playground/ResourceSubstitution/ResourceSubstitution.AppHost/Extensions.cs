@@ -23,8 +23,8 @@ public static class Extensions
         // Every resource built from the same project produces the exact same image, so publishing it once and
         // sharing that image (and the publisher that builds it) across all of them is both correct and avoids
         // running redundant, concurrent `dotnet publish` invocations of the same project.
-        var image = GetContainerImage(projectPath);
-        var imagePublisher = GetOrAddContainerPublisher(projectPath, image);
+        var image = GetContainerImage(builder.ApplicationBuilder, projectPath);
+        var imagePublisher = GetOrAddContainerPublisher(builder.ApplicationBuilder, projectPath, image);
 
         TransmuteResourceAnnotations();
         FixEndpoints();
@@ -32,17 +32,6 @@ public static class Extensions
         return builder
             .WaitForCompletion(imagePublisher)
             .WithDotnetContainerDefaults();
-
-        ContainerImageAnnotation GetContainerImage(string projectPath)
-        {
-            var appHostName = builder.ApplicationBuilder.AppHostAssembly!.GetName().Name!.ToLowerInvariant();
-            return new ContainerImageAnnotation
-            {
-                Image = $"aspire/{appHostName}/{GetSanitizedProjectName(projectPath)}",
-                Tag = "aspire-image-build",
-                Registry = "" // Use local registry
-            };
-        }
 
         void TransmuteResourceAnnotations()
         {
@@ -60,6 +49,13 @@ public static class Extensions
             builder.Resource.RemoveExecutableLaunchRecipeAnnotations();
 
             builder.ApplicationBuilder.RemoveRebuilderResource(builder.Resource.Name);
+
+            // Without this, AddLifeCycleCommands would still add the Rebuild command (it's gated on this marker
+            // alone), but invoking it would fail since the rebuilder resource removed above is gone.
+            if (builder.Resource.TryGetLastAnnotation<ProjectLaunchDefaultsAnnotation>(out var launchDefaults))
+            {
+                builder.Resource.Annotations.Remove(launchDefaults);
+            }
 
             builder.WithAnnotation(image, ResourceAnnotationMutationBehavior.Replace);
         }
@@ -88,35 +84,69 @@ public static class Extensions
             // But for containers, we need to bind to all interfaces so the tunnel can access it
             builder.WithEnvironment(ctx => ctx.EnvironmentVariables.Remove("ASPNETCORE_URLS"));
         }
+    }
 
-        // This could potentially use `IResourceContainerImageManager` instead, but this mirrors
-        // the tool publishing approach, and is easier to troubleshoot errors in run mode.
-        //
-        // Idempotent per project path: every resource built from the same project shares this one publisher
-        // instead of each getting its own, so the project is only ever published once, not once per consumer.
-        IResourceBuilder<ExecutableResource> GetOrAddContainerPublisher(string projectPath, ContainerImageAnnotation image)
+    // Shared by RunAsContainer and the playground's plain `container` resource (which reuses the same built
+    // image, so it needs to agree on the exact same name rather than hardcoding its own copy).
+    private static ContainerImageAnnotation GetContainerImage(IDistributedApplicationBuilder appBuilder, string projectPath)
+    {
+        var appHostName = appBuilder.AppHostAssembly!.GetName().Name!.ToLowerInvariant();
+        return new ContainerImageAnnotation
         {
-            var publisherName = $"{Path.GetFileNameWithoutExtension(projectPath)}-publisher";
-            if (builder.ApplicationBuilder.TryCreateResourceBuilder<ExecutableResource>(publisherName, out var existing))
-            {
-                return existing;
-            }
+            Image = $"aspire/{appHostName}/{GetSanitizedProjectName(projectPath)}",
+            Tag = "aspire-image-build",
+            Registry = "" // Use local registry
+        };
+    }
 
-            // Built from the project path rather than a user-provided resource name, so it can contain
-            // characters (e.g. the project file's '.') that the default resource-name validation rejects.
-            var publisher = new ExecutableResource(publisherName, "dotnet", builder.ApplicationBuilder.AppHostDirectory);
-            publisher.Annotations.Add(NameValidationPolicyAnnotation.None);
-
-            return builder.ApplicationBuilder.AddResource(publisher)
-                .WithArgs(
-                    "publish", projectPath, "/t:PublishContainer",
-                    $"/p:ContainerRepository=\"{image.Image}\"",
-                    $"/p:ContainerImageTags=\"{image.Tag}\"",
-                    $"/p:ContainerRegistry=\"{image.Registry}\"")
-                .WithIconName("BoxToolbox")
-                .WaitForContainerRuntime()
-                .ExcludeFromManifest();
+    // This could potentially use `IResourceContainerImageManager` instead, but this mirrors
+    // the tool publishing approach, and is easier to troubleshoot errors in run mode.
+    //
+    // Idempotent per project path: every resource built from the same project shares this one publisher
+    // instead of each getting its own, so the project is only ever published once, not once per consumer.
+    private static IResourceBuilder<ExecutableResource> GetOrAddContainerPublisher(IDistributedApplicationBuilder appBuilder, string projectPath, ContainerImageAnnotation image)
+    {
+        var publisherName = $"{GetSanitizedProjectName(projectPath)}-publisher";
+        if (appBuilder.TryCreateResourceBuilder<ExecutableResource>(publisherName, out var existing))
+        {
+            return existing;
         }
+
+        // Built from the project path rather than a user-provided resource name, so it can contain
+        // characters (e.g. the project file's '.') that the default resource-name validation rejects.
+        var publisher = new ExecutableResource(publisherName, "dotnet", appBuilder.AppHostDirectory);
+        publisher.Annotations.Add(NameValidationPolicyAnnotation.None);
+
+        return appBuilder.AddResource(publisher)
+            .WithArgs(
+                "publish", projectPath, "/t:PublishContainer",
+                $"/p:ContainerRepository=\"{image.Image}\"",
+                $"/p:ContainerImageTags=\"{image.Tag}\"",
+                $"/p:ContainerRegistry=\"{image.Registry}\"",
+                // On a machine with both Docker Desktop and WSL2 installed, the SDK's container-publish
+                // tooling can auto-detect "Wslc" (a WSL-native local registry) instead of "Docker" - the
+                // image then pushes successfully, but nothing created via Docker Desktop (which is what
+                // actually runs these resources) can see it, so every consumer fails with "unable to find
+                // image locally" no matter how long it waits. Force the registry DCP actually uses.
+                "/p:LocalRegistry=Docker")
+            .WithIconName("BoxToolbox")
+            .WaitForContainerRuntime()
+            .ExcludeFromManifest();
+    }
+
+    /// <summary>
+    /// Points a plain container resource at the same image <see cref="RunAsContainer"/> builds for
+    /// <paramref name="projectPath"/>, and waits for that shared publisher to finish before starting -
+    /// crude but effective: without it, this resource races the publish and starts before the image exists.
+    /// </summary>
+    public static IResourceBuilder<ContainerResource> WaitForSharedContainerImage(this IResourceBuilder<ContainerResource> builder, string projectPath)
+    {
+        var image = GetContainerImage(builder.ApplicationBuilder, projectPath);
+        var imagePublisher = GetOrAddContainerPublisher(builder.ApplicationBuilder, projectPath, image);
+
+        builder.WithAnnotation(image, ResourceAnnotationMutationBehavior.Replace);
+
+        return builder.WaitForCompletion(imagePublisher);
     }
 
     private static string GetSanitizedProjectName(string projectPath) =>
@@ -220,6 +250,13 @@ public static class Extensions
             builder.Resource.RemoveExecutableLaunchRecipeAnnotations();
 
             builder.ApplicationBuilder.RemoveRebuilderResource(builder.Resource.Name);
+
+            // Without this, AddLifeCycleCommands would still add the Rebuild command (it's gated on this marker
+            // alone), but invoking it would fail since the rebuilder resource removed above is gone.
+            if (builder.Resource.TryGetLastAnnotation<ProjectLaunchDefaultsAnnotation>(out var launchDefaults))
+            {
+                builder.Resource.Annotations.Remove(launchDefaults);
+            }
 
             // again, rather than copy
             var newTool = builder.ApplicationBuilder.AddDotnetTool($"temp-{Guid.NewGuid()}", builder.Resource.Name)

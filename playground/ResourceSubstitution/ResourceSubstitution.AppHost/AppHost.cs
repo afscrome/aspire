@@ -13,9 +13,12 @@ builder.AddCSharpApp("project", projectPath)
     .WithEndpoint("https", x => x.Port = null)
     .WithHttpHealthCheck();
 
-//A regular container resource
-builder.AddContainer("container", "aspire/resourcesubstitution.apphost/container-from-project")
-    .WithImageTag("aspire-image-build")
+// A regular container resource, reusing the same image `container-from-project` (and friends) build from
+// `projectPath`. WaitForSharedContainerImage both points this resource at that exact image (rather than
+// hardcoding a name that can drift out of sync with what's actually published) and waits for the shared
+// publisher so this doesn't race it and start before the image exists.
+builder.AddContainer("container", "unused-placeholder-image")
+    .WaitForSharedContainerImage(projectPath)
     .WithHttpEndpoint(targetPort: 8080, env: "ASPNETCORE_HTTP_PORTS")
     .WithHttpsEndpoint(targetPort: 8443, env: "ASPNETCORE_HTTPS_PORTS")
     .WithHttpHealthCheck()
