@@ -10,6 +10,7 @@ using Aspire.Dashboard.Extensions;
 using Aspire.Dashboard.Model;
 using Aspire.Dashboard.Model.ResourceGraph;
 using Aspire.Dashboard.Otlp.Storage;
+using Aspire.Dashboard.Resources;
 using Aspire.Dashboard.Telemetry;
 using Aspire.Dashboard.Utils;
 using Aspire.Hosting.Utils;
@@ -397,6 +398,11 @@ public partial class Resources : ComponentBase, IComponentWithTelemetry, IAsyncD
                 {
                     path = ResourceGraphMapper.GetIconPathData(new Icons.Regular.Size16.Settings()),
                     labelFormat = Loc[nameof(Dashboard.Resources.Resources.ResourcesGraphResourceActionsButton)].Value
+                },
+                hidden = new
+                {
+                    path = ResourceGraphMapper.GetIconPathData(new Icons.Regular.Size16.EyeOff()),
+                    tooltip = ColumnsLoc[nameof(Columns.HiddenResourceIconTooltip)].Value
                 }
             };
 
