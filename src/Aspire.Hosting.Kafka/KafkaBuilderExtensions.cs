@@ -101,6 +101,7 @@ public static class KafkaBuilderExtensions
         {
             var builderForExistingResource = builder.ApplicationBuilder.CreateResourceBuilder(existingKafkaUIResource);
             configureContainer?.Invoke(builderForExistingResource);
+            builderForExistingResource.WithRelationship(builder.Resource, "KafkaUI");
             return builder;
         }
         else
