@@ -4,8 +4,6 @@
 #pragma warning disable ASPIREPERSISTENCE001 // Resource lifetime APIs are experimental.
 
 using System.Data;
-using System.Security.Cryptography;
-using System.Security.Cryptography.X509Certificates;
 using Aspire.TestUtilities;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Tests.Utils;
@@ -602,6 +600,7 @@ public class SqlServerFunctionalTests(ITestOutputHelper testOutputHelper)
 
     [Fact]
     [RequiresFeature(TestFeature.ContainerRuntime)]
+    [RequiresFeature(TestFeature.DevCert)]
     public async Task SqlServerBecomesHealthyAfterDisablingTlsOnReusedVolume()
     {
         var cts = new CancellationTokenSource(TimeSpan.FromMinutes(10));
@@ -610,11 +609,13 @@ public class SqlServerFunctionalTests(ITestOutputHelper testOutputHelper)
         try
         {
             using var builder1 = TestDistributedApplicationBuilder.Create(o => { }, testOutputHelper);
-            using var cert = CreateTestCertificate();
 
+            // Opting in to the developer certificate explicitly makes the test independent of whether that is
+            // also the ambient default on this machine, and lets the health check below validate it for real
+            // (a self-signed test certificate would never pass that check).
 #pragma warning disable ASPIRECERTIFICATES001 // Type is for evaluation purposes only and is subject to change or removal in future updates.
             var sqlserver1 = builder1.AddSqlServer("sqlserver1")
-                .WithHttpsCertificate(cert);
+                .WithHttpsDeveloperCertificate();
 #pragma warning restore ASPIRECERTIFICATES001
 
 #pragma warning disable CS0618 // Type or member is obsolete
@@ -632,13 +633,8 @@ public class SqlServerFunctionalTests(ITestOutputHelper testOutputHelper)
             {
                 await app1.StartAsync();
 
-                // The built-in health check uses the resource's own Encrypt=true connection string, which won't
-                // validate against this self-signed test certificate, so it can never report Healthy here.
-                // Wait for the container to be running, plus a grace period for SQL Server's own startup, so the
-                // data directory is fully initialized (mssql.conf applied, forced encryption in effect) before
-                // stopping it and reusing its volume below.
-                await app1.ResourceNotifications.WaitForResourceAsync(sqlserver1.Resource.Name, KnownResourceStates.Running, cts.Token);
-                await Task.Delay(TimeSpan.FromSeconds(30), cts.Token);
+                await app1.ResourceNotifications.WaitForResourceHealthyAsync(sqlserver1.Resource.Name, cts.Token);
+                Assert.True(sqlserver1.Resource.PrimaryEndpoint.TlsEnabled);
 
                 // Stops the container, or the Volume would still be in use
                 await app1.StopAsync();
@@ -673,17 +669,5 @@ public class SqlServerFunctionalTests(ITestOutputHelper testOutputHelper)
                 DockerUtils.AttemptDeleteDockerVolume(volumeName);
             }
         }
-    }
-
-    private static X509Certificate2 CreateTestCertificate()
-    {
-        using var rsa = RSA.Create(2048);
-        var request = new CertificateRequest("CN=test", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
-
-        request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, false));
-        request.CertificateExtensions.Add(new X509KeyUsageExtension(
-            X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, false));
-
-        return request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1));
     }
 }
