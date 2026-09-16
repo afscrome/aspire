@@ -4,6 +4,8 @@
 #pragma warning disable ASPIREPERSISTENCE001 // Resource lifetime APIs are experimental.
 
 using System.Data;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using Aspire.TestUtilities;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Tests.Utils;
@@ -598,4 +600,90 @@ public class SqlServerFunctionalTests(ITestOutputHelper testOutputHelper)
             "resource");
     }
 
+    [Fact]
+    [RequiresFeature(TestFeature.ContainerRuntime)]
+    public async Task SqlServerBecomesHealthyAfterDisablingTlsOnReusedVolume()
+    {
+        var cts = new CancellationTokenSource(TimeSpan.FromMinutes(10));
+        string? volumeName = null;
+
+        try
+        {
+            using var builder1 = TestDistributedApplicationBuilder.Create(o => { }, testOutputHelper);
+            using var cert = CreateTestCertificate();
+
+#pragma warning disable ASPIRECERTIFICATES001 // Type is for evaluation purposes only and is subject to change or removal in future updates.
+            var sqlserver1 = builder1.AddSqlServer("sqlserver1")
+                .WithHttpsCertificate(cert);
+#pragma warning restore ASPIRECERTIFICATES001
+
+#pragma warning disable CS0618 // Type or member is obsolete
+            var password = sqlserver1.Resource.PasswordParameter.Value;
+#pragma warning restore CS0618
+
+            // Use a deterministic volume name to prevent them from exhausting the machines if deletion fails
+            volumeName = VolumeNameGenerator.Generate(sqlserver1, nameof(SqlServerBecomesHealthyAfterDisablingTlsOnReusedVolume));
+
+            // if the volume already exists (because of a crashing previous run), delete it
+            DockerUtils.AttemptDeleteDockerVolume(volumeName, throwOnFailure: true);
+            sqlserver1.WithDataVolume(volumeName);
+
+            using (var app1 = builder1.Build())
+            {
+                await app1.StartAsync();
+
+                // The built-in health check uses the resource's own Encrypt=true connection string, which won't
+                // validate against this self-signed test certificate, so it can never report Healthy here.
+                // Wait for the container to be running, plus a grace period for SQL Server's own startup, so the
+                // data directory is fully initialized (mssql.conf applied, forced encryption in effect) before
+                // stopping it and reusing its volume below.
+                await app1.ResourceNotifications.WaitForResourceAsync(sqlserver1.Resource.Name, KnownResourceStates.Running, cts.Token);
+                await Task.Delay(TimeSpan.FromSeconds(30), cts.Token);
+
+                // Stops the container, or the Volume would still be in use
+                await app1.StopAsync();
+            }
+
+            using var builder2 = TestDistributedApplicationBuilder.Create(o => { }, testOutputHelper);
+            var passwordParameter2 = builder2.AddParameter("pwd", password);
+
+#pragma warning disable ASPIRECERTIFICATES001 // Type is for evaluation purposes only and is subject to change or removal in future updates.
+            var sqlserver2 = builder2.AddSqlServer("sqlserver2", passwordParameter2)
+                .WithoutHttpsCertificate();
+#pragma warning restore ASPIRECERTIFICATES001
+
+            sqlserver2.WithDataVolume(volumeName);
+
+            using (var app2 = builder2.Build())
+            {
+                await app2.StartAsync();
+
+                // Before mssql.conf was always written deterministically, the stale TLS config
+                // left over from sqlserver1's run (forceencryption=1 pointing at certificate
+                // files that no longer exist) would prevent SQL Server from starting here.
+                await app2.ResourceNotifications.WaitForResourceHealthyAsync(sqlserver2.Resource.Name, cts.Token);
+
+                await app2.StopAsync();
+            }
+        }
+        finally
+        {
+            if (volumeName is not null)
+            {
+                DockerUtils.AttemptDeleteDockerVolume(volumeName);
+            }
+        }
+    }
+
+    private static X509Certificate2 CreateTestCertificate()
+    {
+        using var rsa = RSA.Create(2048);
+        var request = new CertificateRequest("CN=test", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+
+        request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, false));
+        request.CertificateExtensions.Add(new X509KeyUsageExtension(
+            X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, false));
+
+        return request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1));
+    }
 }

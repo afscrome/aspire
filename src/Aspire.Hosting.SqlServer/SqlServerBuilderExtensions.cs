@@ -94,8 +94,9 @@ public static partial class SqlServerBuilderExtensions
                           }
                       });
 
-        sqlBuilder
-            .SubscribeHttpsEndpointsUpdate(ctx =>
+        if (builder.ExecutionContext.IsRunMode)
+        {
+            sqlBuilder.SubscribeHttpsEndpointsUpdate(ctx =>
             {
                 if (IsCertCompatibleWithSqlServer())
                 {
@@ -114,33 +115,36 @@ public static partial class SqlServerBuilderExtensions
                     var developerCertificate = ctx.Services.GetRequiredService<IDeveloperCertificateService>().Certificates.FirstOrDefault();
                     return developerCertificate is not null && developerCertificate.GetCertificateVersion() >= 6;
                 }
-            })
-            .WithContainerFiles("/var/opt/mssql", async (ctx, ct) =>
-            {
-                var certificateContext = ctx.HttpsCertificateContext;
-
-                if (certificateContext is null)
-                {
-                    return [];
-                }
-
-                var config = $"""
-                    [network]
-                    tlscert = {await certificateContext.CertificatePath.GetValueAsync(ct).ConfigureAwait(false)}
-                    tlskey = {await certificateContext.KeyPath.GetValueAsync(ct).ConfigureAwait(false)}
-                    forceencryption = 1
-
-                    """;
-
-                return
-                [
-                    new ContainerFile
-                    {
-                        Name = "mssql.conf",
-                        Contents = config,
-                    }
-                ];
             });
+        }
+
+        sqlBuilder.WithContainerFiles("/var/opt/mssql", async (ctx, ct) =>
+        {
+            var certificateContext = ctx.HttpsCertificateContext;
+
+            var config = certificateContext is null
+                ? """
+                  [network]
+                  forceencryption = 0
+
+                  """
+                : $"""
+                  [network]
+                  tlscert = {await certificateContext.CertificatePath.GetValueAsync(ct).ConfigureAwait(false)}
+                  tlskey = {await certificateContext.KeyPath.GetValueAsync(ct).ConfigureAwait(false)}
+                  forceencryption = 1
+
+                  """;
+
+            return
+            [
+                new ContainerFile
+                {
+                    Name = "mssql.conf",
+                    Contents = config,
+                }
+            ];
+        });
 
         return sqlBuilder;
     }

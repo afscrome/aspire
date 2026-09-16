@@ -335,6 +335,22 @@ public class AddSqlServerTests
     }
 
     [Fact]
+    public async Task SqlServerDoesNotEnableTlsInPublishMode()
+    {
+        using var builder = TestDistributedApplicationBuilder.Create(DistributedApplicationOperation.Publish);
+        using var cert = CreateTestCertificate();
+
+        var sqlServer = builder.AddSqlServer("sqlserver").WithHttpsCertificate(cert);
+
+        using var app = builder.Build();
+        var appModel = app.Services.GetRequiredService<DistributedApplicationModel>();
+
+        await builder.Eventing.PublishAsync(new BeforeStartEvent(app.Services, appModel));
+
+        Assert.False(sqlServer.Resource.PrimaryEndpoint.TlsEnabled);
+    }
+
+    [Fact]
     public async Task SqlServerWritesMssqlConfWhenCertificateIsAvailable()
     {
         using var builder = TestDistributedApplicationBuilder.Create();
@@ -367,7 +383,7 @@ public class AddSqlServerTests
     }
 
     [Fact]
-    public async Task SqlServerWritesNoMssqlConfFilesWhenNoCertificateIsAvailable()
+    public async Task SqlServerWritesMssqlConfWithEncryptionDisabledWhenNoCertificateIsAvailable()
     {
         using var builder = TestDistributedApplicationBuilder.Create();
 
@@ -383,7 +399,12 @@ public class AddSqlServerTests
         };
 
         var entries = await annotation.Callback(context, default);
-        Assert.Empty(entries);
+        var file = Assert.IsType<ContainerFile>(Assert.Single(entries));
+
+        Assert.Equal("mssql.conf", file.Name);
+        Assert.DoesNotContain("tlscert", file.Contents);
+        Assert.DoesNotContain("tlskey", file.Contents);
+        Assert.Contains("forceencryption = 0", file.Contents);
     }
 
     [Fact]
