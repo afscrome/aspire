@@ -36,7 +36,7 @@ public interface IDeveloperCertificateService
     /// loopback address. If true, the developer certificate(s) SAN configuration includes the loopback addresses
     /// "127.0.0.1" and "::1".
     /// </summary>
-    bool SupportsLoopbackAddresses { get; }
+    bool SupportsLoopbackAddresses => false;
 
     /// <summary>
     /// Indicates whether the default behavior is to attempt to trust the developer certificate(s) at runtime.
