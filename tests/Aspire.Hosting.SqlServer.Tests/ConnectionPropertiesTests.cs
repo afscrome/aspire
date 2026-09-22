@@ -111,4 +111,24 @@ public class ConnectionPropertiesTests
         Assert.Equal(other.ConnectionStringExpression.ValueExpression, resource.ConnectionStringExpression.ValueExpression);
         Assert.Contains("other-password", resource.ConnectionStringExpression.ValueExpression);
     }
+
+    [Fact]
+    public async Task GetConnectionStringAsyncForwardsToRedirectedResourceOverride()
+    {
+        var resource = new SqlServerServerResource("sql", new ParameterResource("password", _ => "p@ssw0rd1", secret: true));
+        var other = new ResourceWithOverriddenConnectionString("other", "custom-connection-string");
+
+        resource.Annotations.Add(new ConnectionStringRedirectAnnotation(other));
+
+        var connectionString = await ((IResourceWithConnectionString)resource).GetConnectionStringAsync();
+
+        Assert.Equal("custom-connection-string", connectionString);
+    }
+
+    private sealed class ResourceWithOverriddenConnectionString(string name, string connectionString) : Resource(name), IResourceWithConnectionString
+    {
+        public ReferenceExpression ConnectionStringExpression => ReferenceExpression.Create($"expression-value-should-not-be-used");
+
+        public ValueTask<string?> GetConnectionStringAsync(CancellationToken cancellationToken = default) => new(connectionString);
+    }
 }

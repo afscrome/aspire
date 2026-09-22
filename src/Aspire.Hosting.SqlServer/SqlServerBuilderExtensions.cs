@@ -6,7 +6,6 @@ using System.Text.RegularExpressions;
 using System.Text;
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
-using Aspire.Hosting.Utils;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -98,22 +97,23 @@ public static partial class SqlServerBuilderExtensions
         {
             sqlBuilder.SubscribeHttpsEndpointsUpdate(ctx =>
             {
-                if (IsCertCompatibleWithSqlServer())
+                sqlServer.TryGetLastAnnotation<HttpsCertificateAnnotation>(out var certificateAnnotation);
+
+                bool certificateConfigured;
+
+                if (certificateAnnotation?.Certificate is not null)
                 {
-                    sqlBuilder.WithEndpoint(SqlServerServerResource.PrimaryEndpointName, endpoint => endpoint.TlsEnabled = true);
+                    // A custom certificate is configured; it is assumed to be fully trusted by the client.
+                    certificateConfigured = true;
+                }
+                else
+                {
+                    certificateConfigured = ctx.Services.GetRequiredService<IDeveloperCertificateService>().SupportsLoopbackAddresses;
                 }
 
-                bool IsCertCompatibleWithSqlServer()
+                if (certificateConfigured)
                 {
-                    sqlServer.TryGetLastAnnotation<HttpsCertificateAnnotation>(out var certificateAnnotation);
-
-                    if (certificateAnnotation?.Certificate is not null)
-                    {
-                        return true;
-                    }
-
-                    var developerCertificate = ctx.Services.GetRequiredService<IDeveloperCertificateService>().Certificates.FirstOrDefault();
-                    return developerCertificate is not null && developerCertificate.GetCertificateVersion() >= 6;
+                    sqlBuilder.WithEndpoint(SqlServerServerResource.PrimaryEndpointName, endpoint => endpoint.TlsEnabled = true);
                 }
             });
         }

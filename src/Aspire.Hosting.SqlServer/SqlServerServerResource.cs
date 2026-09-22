@@ -126,6 +126,11 @@ public class SqlServerServerResource : ContainerResource, IResourceWithConnectio
     /// <returns>A connection string for the SQL Server in the form "Server=host,port;User ID=sa;Password=password", with "Encrypt=true" appended when TLS is enabled, or "TrustServerCertificate=true" otherwise.</returns>
     public ValueTask<string?> GetConnectionStringAsync(CancellationToken cancellationToken = default)
     {
+        if (this.TryGetLastAnnotation<ConnectionStringRedirectAnnotation>(out var connectionStringAnnotation))
+        {
+            return connectionStringAnnotation.Resource.GetConnectionStringAsync(cancellationToken);
+        }
+
         return ConnectionStringExpression.GetValueAsync(cancellationToken);
     }
 
